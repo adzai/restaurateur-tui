@@ -10,6 +10,7 @@ logo = """
 """
 
 # TODO rerender only on change?
+# TODO handle resizing search_input
 def render_home(stdscr, search_text=None):
     stdscr.clear()
     stdscr.addstr(logo)
@@ -85,6 +86,11 @@ def get_user_input(stdscr, y, x, chars=None):
                 x = max(orig_x, x - 1)
                 stdscr.addstr(y, x, " ")
                 stdscr.addstr(y, x, "")
+            elif code == 27:
+                curses.curs_set(0)
+                chars = chars[:-1]
+                render_home(stdscr, search_text=chars)
+                return chars, False
             elif x > max_x:
                 diff = max_x - x - 1
                 x = max_x
@@ -95,11 +101,6 @@ def get_user_input(stdscr, y, x, chars=None):
                 curses.curs_set(0)
                 return chars[:-1], True
             # escape
-            elif code == 27:
-                curses.curs_set(0)
-                chars = chars[:-1]
-                render_home(stdscr, search_text=chars)
-                return chars, False
             elif code == 410: # resize char
                 chars = chars[:-1]
             elif isinstance(char, str):
