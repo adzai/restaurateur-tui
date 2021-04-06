@@ -1,30 +1,41 @@
 import curses
 import os
 
+logo_big = """
+                 _                        _
+   _ __ ___  ___| |_ __ _ _   _ _ __ __ _| |_ ___ _   _ _ __
+  | '__/ _ \/ __| __/ _` | | | | '__/ _` | __/ _ \ | | | '__|
+  | | |  __/\__ \ || (_| | |_| | | | (_| | ||  __/ |_| | |
+  |_|  \___||___/\__\__,_|\__,_|_|  \__,_|\__\___|\__,_|_|
+"""[1:]
 
-logo = """
- _ __ ___  ___| |_ __ _ _   _ _ __ __ _| |_ ___ _   _ _ __
-| '__/ _ \/ __| __/ _` | | | | '__/ _` | __/ _ \ | | | '__|
-| | |  __/\__ \ || (_| | |_| | | | (_| | ||  __/ |_| | |
-|_|  \___||___/\__\__,_|\__,_|_|  \__,_|\__\___|\__,_|_|
-"""
+logo_small = """
+  ┬─┐┌─┐┌─┐┌┬┐┌─┐┬ ┬┬─┐┌─┐┌┬┐┌─┐┬ ┬┬─┐
+  ├┬┘├┤ └─┐ │ ├─┤│ │├┬┘├─┤ │ ├┤ │ │├┬┘
+  ┴└─└─┘└─┘ ┴ ┴ ┴└─┘┴└─┴ ┴ ┴ └─┘└─┘┴└─
+"""[1:]
 
 # TODO rerender only on change?
 # TODO handle resizing search_input
 def render_home(stdscr, search_text=None):
     stdscr.clear()
-    stdscr.addstr(logo)
     y, x = stdscr.getmaxyx()
-    nav_bar_y = int(y*0.2)
+    if y < 21 or x < 40:
+        raise("Terminal too small!")
+    elif y > 30 and x > 60:
+        stdscr.addstr(logo_big)
+    else:
+        stdscr.addstr(1, 0, logo_small)
+    nav_bar_y = int(y*0.25)
     nav_bar_x = 5
     search_box_y = int(y*0.9)
     search_box_x = 5
-    main_box_y = int(y*0.3)
+    main_box_y = int(y*0.4)
     main_box_x = 5
     main_box_max_x = x-10
     nav_bar = curses.newwin(3, x-10, nav_bar_y, nav_bar_x)
     nav_bar.box()
-    main_box = curses.newwin(int(y*0.6), main_box_max_x, main_box_y, main_box_x)
+    main_box = curses.newwin(int(y*0.5), main_box_max_x, main_box_y, main_box_x)
     main_box.box()
     search_box = curses.newwin(3, x-10, search_box_y, search_box_x)
     search_box.box()
