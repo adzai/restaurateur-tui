@@ -15,13 +15,21 @@ logo_small = """
   ┴└─└─┘└─┘ ┴ ┴ ┴└─┘┴└─┴ ┴ ┴ └─┘└─┘┴└─
 """[1:]
 
+class TerminalTooSmall(Exception):
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.message = f"Terminal too small! (x: {self.x}, y: {self.y})"
+        super().__init__(self.message)
+
+
 # TODO rerender only on change?
 # TODO handle resizing search_input
 def render_home(stdscr, search_text=None):
     stdscr.clear()
     y, x = stdscr.getmaxyx()
-    if y < 21 or x < 40:
-        raise("Terminal too small!")
+    if y < 21 or x < 57:
+        raise TerminalTooSmall(x, y)
     elif y > 30 and x > 60:
         stdscr.addstr(logo_big)
     else:
@@ -33,7 +41,8 @@ def render_home(stdscr, search_text=None):
     main_box_y = int(y*0.4)
     main_box_x = 5
     main_box_max_x = x-10
-    nav_bar = curses.newwin(3, x-10, nav_bar_y, nav_bar_x)
+    nav_bar_max_x = x-10
+    nav_bar = curses.newwin(3, nav_bar_max_x, nav_bar_y, nav_bar_x)
     nav_bar.box()
     main_box = curses.newwin(int(y*0.5), main_box_max_x, main_box_y, main_box_x)
     main_box.box()
@@ -47,14 +56,31 @@ def render_home(stdscr, search_text=None):
     _, max_x = main_box.getmaxyx()
     print_help_string(stdscr, main_box_y, main_box_x,
                       main_box_max_x - main_box_x)
+    print_nav_bar_items(stdscr, nav_bar_y, nav_bar_x, nav_bar_max_x)
     print_keyword_string(stdscr, search_box_y, search_box_x, "Search: " +
                          search_text)
+
+def print_nav_bar_items(stdscr, y, x, max_x):
+    max_len = max_x
+    x += 3
+    space = max_len - x
+    pc_text = "Prague College"
+    cuisines_text = "Filters"
+    login_text = "Login"
+    sign_in_text = "Sign up"
+    text_list = [pc_text, cuisines_text, login_text, sign_in_text]
+    total_len = sum(map(len, text_list))
+    space_total = space - total_len
+    gap = space_total // (len(text_list) - 1)
+    for text in text_list:
+        print_keyword_string(stdscr, y, x, text)
+        x += len(text) + gap
 
 def print_help_string(stdscr, y, x, max_x):
     help_text = """Welcome to restaurateur TUI!
     This interface is controlled via keyboard shortcuts. To access specific
-    elements you can use the key that is in yellow and underlined, eg: to enter
-    the search box press 'S' or 's'. To leave any window/mode press escape.
+    elements you can use the key that is highlighted in yellow and underlined,
+    eg: to enter the search box press 'S' or 's'. To leave any window/mode press escape.
     If you need help with any of the commands press '?'"""
     max_len = max_x - 2
     x += 2
@@ -120,6 +146,25 @@ def get_user_input(stdscr, y, x, chars=None):
         render_home(stdscr, search_text=chars)
     return chars, False
 
+def render_help_menu(stdscr):
+    stdscr.clear()
+    help_box = curses.newwin(0, 0)
+    help_box.box()
+    stdscr.refresh()
+    help_box.refresh()
+    stdscr.addstr(1, 1, "Esc : Exits current mode/window")
+    stdscr.addstr(2, 1, "S, s: Enter search input box")
+    stdscr.addstr(3, 1, "P, p: Displays restaurants around Prague college")
+    stdscr.addstr(4, 1, "L, l: Displays log in page")
+    stdscr.addstr(5, 1, "S, S: Displays sign up page")
+    stdscr.addstr(6, 1, "F, f: Displays filter page menu to search based on filters")
+
+def print_help_menu(stdscr):
+    render_help_menu(stdscr)
+    while (c := stdscr.getch()) != 27:
+        render_help_menu(stdscr)
+
+
 def main(stdscr):
     stdscr.clear()
     curses.curs_set(0) # Turn off cursor blinking
@@ -128,9 +173,9 @@ def main(stdscr):
     curses.init_pair(1, curses.COLOR_YELLOW, -1)
     render_home(stdscr)
     user_input = ""
-    while (c := stdscr.getch()) != 27:
+    while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
         render_home(stdscr, search_text=user_input)
-        if c == ord('s') or c == ord('S'):
+        if c in (ord('s'), ord('S')):
             y, x = stdscr.getyx()
             stdscr.move(y, x)
             user_input, finished = get_user_input(stdscr, y, x, chars=user_input)
@@ -138,6 +183,9 @@ def main(stdscr):
                 # process input
                 user_input = ""
                 render_home(stdscr, search_text=user_input)
+        elif c == ord('?'):
+            print_help_menu(stdscr)
+            render_home(stdscr, search_text=user_input)
 
 
 if __name__ == "__main__":
