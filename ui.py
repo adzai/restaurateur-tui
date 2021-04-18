@@ -69,7 +69,7 @@ def print_nav_bar_items(stdscr, y, x, max_x):
     pc_text = "Prague College"
     cuisines_text = "Filters"
     login_text = "Login"
-    sign_in_text = "Sign up"
+    sign_in_text = "Register"
     text_list = [pc_text, cuisines_text, login_text, sign_in_text]
     total_len = sum(map(len, text_list))
     space_total = space - total_len
@@ -113,16 +113,21 @@ def display_restaurant_info(stdscr, restaurant):
     stdscr.refresh()
     main_box.refresh()
     x += 1
+    days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday",
+                    "Friday", "Saturday", "Sunday"]
     for key, value in restaurant.items():
         y += 1
         if value is None or key == 'Images':
             y -= 1
             pass
         elif key == 'OpeningHours':
+            sorted_days = dict()
+            for day in days_of_week:
+                sorted_days[day] = value[day]
             y += 1
             stdscr.addstr(y, x, "**Opening hours**")
             y += 1
-            for k, v in value.items():
+            for k, v in sorted_days.items():
                 orig_x = x
                 stdscr.addstr(y, x, k + ":")
                 x += len(k) + 2
