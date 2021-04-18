@@ -1,5 +1,7 @@
 import curses
 import os
+import requests
+import json
 
 logo_big = """
                  _                        _
@@ -75,6 +77,82 @@ def print_nav_bar_items(stdscr, y, x, max_x):
     for text in text_list:
         print_keyword_string(stdscr, y, x, text)
         x += len(text) + gap
+
+def render_menu(stdscr):
+    r = requests.get("http://localhost:8080/prague-college/restaurants")
+    data = json.loads(r.text)
+    stdscr.clear()
+    y, x = stdscr.getyx()
+    if data["Status"] == 200:
+        dat = data["Data"]
+        orig_y = y + 1
+    else:
+        stdscr.addstr(y + 1, x, "Couldn't fetch restaurants")
+        return
+    number_of_restaurants = len(dat)
+    user_y = orig_y
+    display_restaurants(stdscr, dat, orig_y, x, user_y)
+    while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
+        max_y, max_x = stdscr.getmaxyx()
+        max_y = number_of_restaurants - orig_y + 1
+        if c in (ord('j'), ord('J')):
+            if user_y < max_y:
+                user_y += 1
+        elif c in (ord('k'), ord('K')):
+            if user_y > orig_y:
+                user_y -= 1
+        elif c == 10:
+            display_restaurant_info(stdscr, dat[user_y - orig_y])
+        display_restaurants(stdscr, dat, orig_y, x, user_y)
+
+def display_restaurant_info(stdscr, restaurant):
+    stdscr.clear()
+    y, x = stdscr.getyx()
+    main_box = curses.newwin(y, x)
+    main_box.box()
+    stdscr.refresh()
+    main_box.refresh()
+    x += 1
+    for key, value in restaurant.items():
+        y += 1
+        if value is None or key == 'Images':
+            y -= 1
+            pass
+        elif key == 'OpeningHours':
+            y += 1
+            stdscr.addstr(y, x, "**Opening hours**")
+            y += 1
+            for k, v in value.items():
+                orig_x = x
+                stdscr.addstr(y, x, k + ":")
+                x += len(k) + 2
+                stdscr.addstr(y, x, v)
+                x = orig_x
+                y += 1
+        else:
+            orig_x = x
+            stdscr.addstr(y, x, key + ":")
+            x += len(key) + 2
+            stdscr.addstr(y, x, str(value))
+            x = orig_x
+    stdscr.getch()
+
+
+def display_restaurants(stdscr, restaurants, y, x, user_y):
+    stdscr.clear()
+    win_y, win_x = stdscr.getyx()
+    main_box = curses.newwin(win_y, win_x)
+    main_box.box()
+    stdscr.refresh()
+    main_box.refresh()
+    x += 1
+    for restaurant in restaurants:
+        if y == user_y:
+            stdscr.addstr(y, x, restaurant["Name"], curses.A_STANDOUT)
+        else:
+            stdscr.addstr(y, x, restaurant["Name"])
+        y += 1
+    stdscr.refresh()
 
 def print_help_string(stdscr, y, x, max_x):
     help_text = """Welcome to restaurateur TUI!
@@ -161,7 +239,7 @@ def render_help_menu(stdscr):
 
 def print_help_menu(stdscr):
     render_help_menu(stdscr)
-    while (c := stdscr.getch()) != 27:
+    while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
         render_help_menu(stdscr)
 
 
@@ -174,7 +252,6 @@ def main(stdscr):
     render_home(stdscr)
     user_input = ""
     while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
-        render_home(stdscr, search_text=user_input)
         if c in (ord('s'), ord('S')):
             y, x = stdscr.getyx()
             stdscr.move(y, x)
@@ -186,6 +263,9 @@ def main(stdscr):
         elif c == ord('?'):
             print_help_menu(stdscr)
             render_home(stdscr, search_text=user_input)
+        elif c in (ord('p'), ord('P')):
+            render_menu(stdscr)
+        render_home(stdscr, search_text=user_input)
 
 
 if __name__ == "__main__":
