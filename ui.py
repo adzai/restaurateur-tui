@@ -78,6 +78,11 @@ def print_nav_bar_items(stdscr, y, x, max_x):
         print_keyword_string(stdscr, y, x, text)
         x += len(text) + gap
 
+# TODO
+# One function to render both the list of restaurants and the info
+# On the info page, enter should "zoom" to field - making it fullscreen
+# if the x is too small print ...
+# if the y is too small, scroll
 def render_menu(stdscr):
     r = requests.get("http://localhost:8080/prague-college/restaurants")
     data = json.loads(r.text)
@@ -89,21 +94,27 @@ def render_menu(stdscr):
     else:
         stdscr.addstr(y + 1, x, "Couldn't fetch restaurants")
         return
-    number_of_restaurants = len(dat)
     user_y = orig_y
-    display_restaurants(stdscr, dat, orig_y, x, user_y)
+    offset = 0
+    number_of_restaurants = display_restaurants(stdscr, dat, orig_y, x, user_y, offset)
     while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
         max_y, max_x = stdscr.getmaxyx()
         max_y = number_of_restaurants - orig_y + 1
         if c in (ord('j'), ord('J')):
-            if user_y < max_y:
-                user_y += 1
+            if user_y + offset < max_y:
+                win_y, win_x = stdscr.getmaxyx()
+                if user_y == win_y - 2:
+                    offset += 1
+                else:
+                    user_y += 1
         elif c in (ord('k'), ord('K')):
             if user_y > orig_y:
                 user_y -= 1
+            elif offset > 0:
+                offset -= 1
         elif c == 10:
             display_restaurant_info(stdscr, dat[user_y - orig_y])
-        display_restaurants(stdscr, dat, orig_y, x, user_y)
+        display_restaurants(stdscr, dat, orig_y, x, user_y, offset)
 
 def display_restaurant_info(stdscr, restaurant):
     stdscr.clear()
@@ -123,7 +134,7 @@ def display_restaurant_info(stdscr, restaurant):
         elif key == 'OpeningHours':
             sorted_days = dict()
             for day in days_of_week:
-                sorted_days[day] = value[day]
+                sorted_days[day] = json.loads(value)[day]
             y += 1
             stdscr.addstr(y, x, "**Opening hours**")
             y += 1
@@ -143,21 +154,33 @@ def display_restaurant_info(stdscr, restaurant):
     stdscr.getch()
 
 
-def display_restaurants(stdscr, restaurants, y, x, user_y):
+def display_restaurants(stdscr, restaurants, y, x, user_y, offset):
     stdscr.clear()
     win_y, win_x = stdscr.getyx()
     main_box = curses.newwin(win_y, win_x)
     main_box.box()
     stdscr.refresh()
     main_box.refresh()
+    max_y, max_x = stdscr.getmaxyx()
     x += 1
+    number_of_restaurants = len(restaurants)
+    free_space = max_y - y - 1
+    # For user_y
+    if number_of_restaurants > free_space:
+        max_num = number_of_restaurants - free_space
+    else:
+        max_num = 0
+    restaurants = restaurants[offset:]
     for restaurant in restaurants:
-        if y == user_y:
+        if y == max_y - 1:
+            break
+        elif y == user_y:
             stdscr.addstr(y, x, restaurant["Name"], curses.A_STANDOUT)
         else:
             stdscr.addstr(y, x, restaurant["Name"])
         y += 1
     stdscr.refresh()
+    return number_of_restaurants
 
 def print_help_string(stdscr, y, x, max_x):
     help_text = """Welcome to restaurateur TUI!
