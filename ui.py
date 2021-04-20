@@ -1,7 +1,8 @@
 import curses
-import os
-import requests
 import json
+import os
+import re
+import requests
 
 logo_big = """
                  _                        _
@@ -16,6 +17,7 @@ logo_small = """
   ├┬┘├┤ └─┐ │ ├─┤│ │├┬┘├─┤ │ ├┤ │ │├┬┘
   ┴└─└─┘└─┘ ┴ ┴ ┴└─┘┴└─┴ ┴ ┴ └─┘└─┘┴└─
 """[1:]
+
 
 class TerminalTooSmall(Exception):
     def __init__(self, x, y):
@@ -46,7 +48,8 @@ def render_home(stdscr, search_text=None):
     nav_bar_max_x = x-10
     nav_bar = curses.newwin(3, nav_bar_max_x, nav_bar_y, nav_bar_x)
     nav_bar.box()
-    main_box = curses.newwin(int(y*0.5), main_box_max_x, main_box_y, main_box_x)
+    main_box = curses.newwin(
+        int(y*0.5), main_box_max_x, main_box_y, main_box_x)
     main_box.box()
     search_box = curses.newwin(3, x-10, search_box_y, search_box_x)
     search_box.box()
@@ -61,6 +64,7 @@ def render_home(stdscr, search_text=None):
     print_nav_bar_items(stdscr, nav_bar_y, nav_bar_x, nav_bar_max_x)
     print_keyword_string(stdscr, search_box_y, search_box_x, "Search: " +
                          search_text)
+
 
 def print_nav_bar_items(stdscr, y, x, max_x):
     max_len = max_x
@@ -83,7 +87,10 @@ def print_nav_bar_items(stdscr, y, x, max_x):
 # On the info page, enter should "zoom" to field - making it fullscreen
 # if the x is too small print ...
 # if the y is too small, scroll
+
+
 def render_menu(stdscr):
+    # TODO handle errors
     r = requests.get("http://localhost:8080/prague-college/restaurants")
     data = json.loads(r.text)
     stdscr.clear()
@@ -96,7 +103,8 @@ def render_menu(stdscr):
         return
     user_y = orig_y
     offset = 0
-    number_of_restaurants = display_restaurants(stdscr, dat, orig_y, x, user_y, offset)
+    number_of_restaurants = display_restaurants(
+        stdscr, dat, orig_y, x, user_y, offset)
     while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
         max_y, max_x = stdscr.getmaxyx()
         max_y = number_of_restaurants - orig_y + 1
@@ -112,12 +120,15 @@ def render_menu(stdscr):
                 user_y -= 1
             elif offset > 0:
                 offset -= 1
-        elif c == 10:
+        elif c in (10, ord('o'), ord('O')):
             display_restaurant_info(stdscr, dat[user_y - orig_y])
         display_restaurants(stdscr, dat, orig_y, x, user_y, offset)
 
+
 def display_restaurant_info(stdscr, restaurant):
     stdscr.clear()
+    # Clean up URL
+    restaurant["URL"] = re.match(r"^.+?[^\/:](?=[?\/]|$)", restaurant["URL"]).group(0)
     y, x = stdscr.getyx()
     main_box = curses.newwin(y, x)
     main_box.box()
@@ -126,11 +137,16 @@ def display_restaurant_info(stdscr, restaurant):
     x += 1
     days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday",
                     "Friday", "Saturday", "Sunday"]
+    max_y, max_x = stdscr.getmaxyx()
+    max_len = max_x - 2
+    orig_x = x
     for key, value in restaurant.items():
         y += 1
-        if value is None or key == 'Images':
+        if y >= max_y - 1:
+            break
+        if value in (None, "", "null") or key in ('Images', "ID"):
             y -= 1
-            pass
+            continue
         elif key == 'OpeningHours':
             sorted_days = dict()
             for day in days_of_week:
@@ -145,11 +161,29 @@ def display_restaurant_info(stdscr, restaurant):
                 stdscr.addstr(y, x, v)
                 x = orig_x
                 y += 1
+                if y >= max_y - 1:
+                    stdscr.getch()
+                    return
         else:
-            orig_x = x
             stdscr.addstr(y, x, key + ":")
             x += len(key) + 2
-            stdscr.addstr(y, x, str(value))
+            if isinstance(value, list):
+                value = ", ".join(value)
+            if isinstance(value, str):
+                for word in value.split():
+                    word_len = len(word)
+                    if x + word_len + 1 >= max_len:
+                        y += 1
+                        if y >= max_y - 1:
+                            stdscr.getch()
+                            return
+                        x = orig_x
+                    stdscr.addstr(y, x, str(word))
+                    x += word_len
+                    stdscr.addstr(y, x, " ")
+                    x += 1
+            else:
+                stdscr.addstr(y, x, str(value))
             x = orig_x
     stdscr.getch()
 
@@ -182,6 +216,7 @@ def display_restaurants(stdscr, restaurants, y, x, user_y, offset):
     stdscr.refresh()
     return number_of_restaurants
 
+
 def print_help_string(stdscr, y, x, max_x):
     help_text = """Welcome to restaurateur TUI!
     This interface is controlled via keyboard shortcuts. To access specific
@@ -204,10 +239,12 @@ def print_help_string(stdscr, y, x, max_x):
             stdscr.addch(y, x, char)
             x += 1
 
+
 def print_keyword_string(stdscr, y, x, string):
     stdscr.addch(y + 1, x + 1, string[0], curses.color_pair(1) +
                  curses.A_UNDERLINE)
     stdscr.addstr(y + 1, x + 2, string[1:])
+
 
 def get_user_input(stdscr, y, x, chars=None):
     chars = "" if chars is None else chars
@@ -244,13 +281,14 @@ def get_user_input(stdscr, y, x, chars=None):
                 curses.curs_set(0)
                 return chars[:-1], True
             # escape
-            elif code == 410: # resize char
+            elif code == 410:  # resize char
                 chars = chars[:-1]
             elif isinstance(char, str):
                 stdscr.addstr(y, x, char)
                 x += 1
         render_home(stdscr, search_text=chars)
     return chars, False
+
 
 def render_help_menu(stdscr):
     stdscr.clear()
@@ -263,7 +301,9 @@ def render_help_menu(stdscr):
     stdscr.addstr(3, 1, "P, p: Displays restaurants around Prague college")
     stdscr.addstr(4, 1, "L, l: Displays log in page")
     stdscr.addstr(5, 1, "S, S: Displays sign up page")
-    stdscr.addstr(6, 1, "F, f: Displays filter page menu to search based on filters")
+    stdscr.addstr(
+        6, 1, "F, f: Displays filter page menu to search based on filters")
+
 
 def print_help_menu(stdscr):
     render_help_menu(stdscr)
@@ -273,9 +313,9 @@ def print_help_menu(stdscr):
 
 def main(stdscr):
     stdscr.clear()
-    curses.curs_set(0) # Turn off cursor blinking
+    curses.curs_set(0)  # Turn off cursor blinking
     curses.start_color()
-    curses.use_default_colors();
+    curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_YELLOW, -1)
     render_home(stdscr)
     user_input = ""
@@ -283,7 +323,8 @@ def main(stdscr):
         if c in (ord('s'), ord('S')):
             y, x = stdscr.getyx()
             stdscr.move(y, x)
-            user_input, finished = get_user_input(stdscr, y, x, chars=user_input)
+            user_input, finished = get_user_input(
+                stdscr, y, x, chars=user_input)
             if finished:
                 # process input
                 user_input = ""
