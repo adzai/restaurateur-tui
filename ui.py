@@ -3,6 +3,7 @@ import json
 import os
 import re
 import requests
+import sys
 
 logo_big = """
                  _                        _
@@ -89,10 +90,20 @@ def print_nav_bar_items(stdscr, y, x, max_x):
 # if the y is too small, scroll
 
 
+def get_data(stdscr):
+    try:
+        r = requests.get("http://localhost:8080/prague-college/restaurants")
+        data = json.loads(r.text)
+    except:
+        stdscr.clear()
+        stdscr.addstr("Couldn't connect to the server, press any key to exit")
+        stdscr.getch()
+        sys.exit(1)
+
+
 def render_menu(stdscr):
     # TODO handle errors
-    r = requests.get("http://localhost:8080/prague-college/restaurants")
-    data = json.loads(r.text)
+    get_data(stdscr)
     stdscr.clear()
     y, x = stdscr.getyx()
     if data["Status"] == 200:
@@ -128,7 +139,8 @@ def render_menu(stdscr):
 def display_restaurant_info(stdscr, restaurant):
     stdscr.clear()
     # Clean up URL
-    restaurant["URL"] = re.match(r"^.+?[^\/:](?=[?\/]|$)", restaurant["URL"]).group(0)
+    restaurant["URL"] = re.match(
+        r"^.+?[^\/:](?=[?\/]|$)", restaurant["URL"]).group(0)
     y, x = stdscr.getyx()
     main_box = curses.newwin(y, x)
     main_box.box()
