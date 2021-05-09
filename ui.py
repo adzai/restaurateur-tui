@@ -28,8 +28,93 @@ class TerminalTooSmall(Exception):
         super().__init__(self.message)
 
 
-# TODO rerender only on change?
+class MenuItem:
+    def __init__(self, x, y, string_content, highlighted=False):
+        self.x = x
+        self.y = y
+        self.string_content = string_content
+        self.highlighted = highlighted
+        self.max_x = 0
+
+    def update_max(self, max_x):
+        self.max_x = max_x
+        self.string_content = self.string_content if self.x + \
+            len(self.string_content) < max_x - 1 else self.string_content[:max_x-self.x-1]
+
+
+class Menu:
+    def __init__(self):
+        # TODO: add these as constants for windows and use everywhere
+        self.x = 2
+        self.y = 1
+        self.current_y = self.y
+        self.menu_items = []
+        self.offset = 0
+
+    def add_items(self, stdscr, items):
+        max_x, max_y = stdscr.getmaxyx()
+        y = self.y
+        for item in items:
+            highlighted = True if y == self.current_y + self.offset else False
+            self.menu_items.append(MenuItem(self.x, y, item, highlighted))
+            y += 1
+
+    def render_menu(self, stdscr, items):
+        self.menu_items = []
+        self.add_items(stdscr, items)
+        stdscr.clear()
+        win_y, win_x = stdscr.getyx()
+        main_box = curses.newwin(win_y, win_x)
+        main_box.box()
+        stdscr.refresh()
+        main_box.refresh()
+        max_y, max_x = stdscr.getmaxyx()
+        max_y -= 1
+        y = self.y
+        menu_items = self.menu_items[self.offset:]
+        for item in menu_items:
+            if y >= max_y:
+                break
+            item.update_max(max_x)
+            if item.highlighted:
+                stdscr.addstr(y, item.x, item.string_content,
+                              curses.A_STANDOUT)
+            else:
+                stdscr.addstr(y, item.x, item.string_content)
+            y += 1
+        stdscr.refresh()
+
+    def scroll_loop(self, stdscr):
+        data = get_data(stdscr)
+        items = get_restaurant_names(data)
+        self.render_menu(stdscr, items)
+        while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
+            win_max_y, _ = stdscr.getmaxyx()
+            # max_y = number_of_restaurants - orig_y + 1
+            max_y = len(items) + self.y - 1
+            if c in (ord('j'), ord('J')):
+                if self.current_y == win_max_y - 2:
+                    if self.offset + self.current_y < max_y:
+                        self.offset += 1
+                else:
+                    self.current_y += 1
+            elif c in (ord('k'), ord('K')):
+                if self.current_y > self.y:
+                    self.current_y -= 1
+                elif self.offset > 0:
+                    self.offset -= 1
+            # TODO Add action - function for this?
+            # elif c in (10, ord('o'), ord('O')):
+            #     display_restaurant_info(stdscr, dat[user_y - orig_y])
+            self.render_menu(stdscr, items)
+
+
+def get_restaurant_names(data):
+    return [restaurant["Name"] for restaurant in data["Data"]]
+
 # TODO handle resizing search_input
+
+
 def render_home(stdscr, search_text=None):
     stdscr.clear()
     y, x = stdscr.getmaxyx()
@@ -94,6 +179,7 @@ def get_data(stdscr):
     try:
         r = requests.get("http://localhost:8080/prague-college/restaurants")
         data = json.loads(r.text)
+        return data
     except:
         stdscr.clear()
         stdscr.addstr("Couldn't connect to the server, press any key to exit")
@@ -103,7 +189,7 @@ def get_data(stdscr):
 
 def render_menu(stdscr):
     # TODO handle errors
-    get_data(stdscr)
+    data = get_data(stdscr)
     stdscr.clear()
     y, x = stdscr.getyx()
     if data["Status"] == 200:
@@ -345,7 +431,9 @@ def main(stdscr):
             print_help_menu(stdscr)
             render_home(stdscr, search_text=user_input)
         elif c in (ord('p'), ord('P')):
-            render_menu(stdscr)
+            menu = Menu()
+            menu.scroll_loop(stdscr)
+            # render_menu(stdscr)
         render_home(stdscr, search_text=user_input)
 
 
