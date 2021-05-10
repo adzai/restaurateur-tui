@@ -43,10 +43,11 @@ class MenuItem:
 
 
 class Menu:
-    def __init__(self):
+    def __init__(self, data):
         # TODO: add these as constants for windows and use everywhere
         self.x = 2
         self.y = 1
+        self.data = data
         self.current_y = self.y
         self.menu_items = []
         self.offset = 0
@@ -84,16 +85,16 @@ class Menu:
             y += 1
         stdscr.refresh()
 
-    def scroll_loop(self, stdscr):
-        data = get_data(stdscr)
-        items = get_restaurant_names(data)
+    def scroll_loop(self, stdscr, items=[]):
+        if len(items) == 0:
+            items = get_restaurant_names(self.data)
         self.render_menu(stdscr, items)
         while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
             win_max_y, _ = stdscr.getmaxyx()
             # max_y = number_of_restaurants - orig_y + 1
             max_y = len(items) + self.y - 1
             if c in (ord('j'), ord('J')):
-                if self.current_y == win_max_y - 2:
+                if self.current_y == win_max_y - 2 or self.current_y == max_y:
                     if self.offset + self.current_y < max_y:
                         self.offset += 1
                 else:
@@ -104,13 +105,47 @@ class Menu:
                 elif self.offset > 0:
                     self.offset -= 1
             # TODO Add action - function for this?
-            # elif c in (10, ord('o'), ord('O')):
-            #     display_restaurant_info(stdscr, dat[user_y - orig_y])
+            elif c in (10, ord('o'), ord('O')):
+                new_items = get_restaurant_info(
+                    self.get_currently_selected())
+                self.scroll_loop(stdscr, items=new_items)
             self.render_menu(stdscr, items)
+
+    def get_currently_selected(self):
+        for i, item in enumerate(self.menu_items):
+            if item.y == self.current_y + self.offset:
+                return self.data[i]
+
+
+def get_restaurant_info(restaurant):
+    restaurant["URL"] = re.match(
+        r"^.+?[^\/:](?=[?\/]|$)", restaurant["URL"]).group(0)
+    days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday",
+                    "Friday", "Saturday", "Sunday"]
+    items = []
+    for key, value in restaurant.items():
+        if value in (None, "", "null") or key in ('Images', "ID"):
+            continue
+        elif key == 'OpeningHours':
+            sorted_days = dict()
+            for day in days_of_week:
+                sorted_days[day] = json.loads(value)[day]
+            items.append("**Opening hours**")
+            for k, v in sorted_days.items():
+                items.append(k)
+                items.append(v)
+        else:
+            start = key + ": "
+            if isinstance(value, list):
+                v = ", ".join(value)
+                items.append(start + v)
+            else:
+                items.append(start + str(value))
+    return items
 
 
 def get_restaurant_names(data):
-    return [restaurant["Name"] for restaurant in data["Data"]]
+    return [restaurant["Name"] for restaurant in data]
 
 # TODO handle resizing search_input
 
@@ -148,7 +183,8 @@ def render_home(stdscr, search_text=None):
     print_help_string(stdscr, main_box_y, main_box_x,
                       main_box_max_x - main_box_x)
     print_nav_bar_items(stdscr, nav_bar_y, nav_bar_x, nav_bar_max_x)
-    print_keyword_string(stdscr, search_box_y, search_box_x, "Search: " +
+    # TODO: Have a toggle key which will toggle between search name and search address
+    print_keyword_string(stdscr, search_box_y, search_box_x, "Search name: " +
                          search_text)
 
 
@@ -179,7 +215,7 @@ def get_data(stdscr):
     try:
         r = requests.get("http://localhost:8080/prague-college/restaurants")
         data = json.loads(r.text)
-        return data
+        return data["Data"]
     except:
         stdscr.clear()
         stdscr.addstr("Couldn't connect to the server, press any key to exit")
@@ -189,7 +225,6 @@ def get_data(stdscr):
 
 def render_menu(stdscr):
     # TODO handle errors
-    data = get_data(stdscr)
     stdscr.clear()
     y, x = stdscr.getyx()
     if data["Status"] == 200:
@@ -431,7 +466,8 @@ def main(stdscr):
             print_help_menu(stdscr)
             render_home(stdscr, search_text=user_input)
         elif c in (ord('p'), ord('P')):
-            menu = Menu()
+            data = get_data(stdscr)
+            menu = Menu(data)
             menu.scroll_loop(stdscr)
             # render_menu(stdscr)
         render_home(stdscr, search_text=user_input)
