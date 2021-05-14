@@ -205,9 +205,9 @@ def get_restaurant_names(data):
 def render_home(stdscr, search_name="name", search_text=None):
     stdscr.clear()
     y, x = stdscr.getmaxyx()
-    if y < 21 or x < 57:
+    if y < 20 or x < 40:
         raise TerminalTooSmall(x, y)
-    elif y > 30 and x > 60:
+    elif y > 20 and x > 60:
         stdscr.addstr(logo_big)
     else:
         stdscr.addstr(1, 0, logo_small)
@@ -246,10 +246,18 @@ def print_nav_bar_items(stdscr, y, x, max_x):
     x += 3
     space = max_len - x
     pc_text = "Prague College"
+    restaurants_text = "Restaurants"
     cuisines_text = "Filters"
     login_text = "Login"
     sign_in_text = "Register"
-    text_list = [pc_text, cuisines_text, login_text, sign_in_text]
+    text_list = [pc_text, restaurants_text,
+                 cuisines_text, login_text, sign_in_text]
+    updated = len(text_list) - 1
+    while len(" ".join(text_list)) >= max_x - x:
+        text_list[updated] = text_list[updated][0] + "..."
+        if updated == 0:
+            break
+        updated -= 1
     total_len = sum(map(len, text_list))
     space_total = space - total_len
     gap = space_total // (len(text_list) - 1)
@@ -411,6 +419,8 @@ def print_help_string(stdscr, y, x, max_x):
     If you need help with any of the commands press '?'"""
     max_len = max_x - 2
     x += 2
+    if max_x < 45:
+        help_text = "Press ? for help"
     count = x
     orig_x = x
     y += 1
