@@ -20,6 +20,10 @@ logo_small = """
 """[1:]
 
 
+and_params = set(("vegetarian", "vegan", "gluten-free", "takeaway"))
+and_filters = []
+
+
 class TerminalTooSmall(Exception):
     def __init__(self, x, y):
         self.x = x
@@ -139,9 +143,19 @@ class Menu:
                 return item
 
 
+def string_to_param(string):
+    return string.replace(" ", "-").lower()
+
+
 def toggle_item(menu, stdscr):
     item = menu.get_currently_selected_item()
     item.toggle_highlighted = not item.toggle_highlighted
+    param_value = string_to_param(item.string_content)
+    if item.toggle_highlighted:
+        if param_value in and_params:
+            and_filters.append(param_value + "=true")
+    else:
+        and_filters.remove(param_value + "=true")
 
 
 def restaurant_items_loop(menu, stdscr):
@@ -178,7 +192,7 @@ def get_restaurant_info(restaurant):
 
 
 def get_filters():
-    return ["Vegetarian", "Vegan", "Gluten free"]
+    return ["Vegetarian", "Vegan", "Gluten free", "Takeaway"]
 
 
 def get_restaurant_names(data):
@@ -251,7 +265,8 @@ def print_nav_bar_items(stdscr, y, x, max_x):
 
 def get_data(stdscr):
     try:
-        r = requests.get("http://localhost:8080/prague-college/restaurants")
+        r = requests.get(
+            "http://localhost:8080/prague-college/restaurants?" + "&".join(and_filters))
         data = json.loads(r.text)
         return data["Data"]
     except:
@@ -491,6 +506,8 @@ def main(stdscr):
     curses.init_pair(2, curses.COLOR_RED, curses.COLOR_WHITE)
     curses.init_pair(3, curses.COLOR_RED, -1)
     render_home(stdscr)
+    filters = get_filters()
+    filters_menu = Menu(filters)
     user_input = ""
     search_name = "name"
     while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
@@ -515,9 +532,8 @@ def main(stdscr):
             menu.scroll_loop(stdscr, restaurant_items_loop)
             # render_menu(stdscr)
         elif c in (ord('f'), ord('F')):
-            data = get_filters()
-            menu = Menu(data)
-            menu.scroll_loop(stdscr, toggle_item, items=data)
+            menu = filters_menu
+            menu.scroll_loop(stdscr, toggle_item, items=filters)
             # render_menu(stdscr)
         render_home(stdscr, search_name=search_name, search_text=user_input)
 
