@@ -127,9 +127,9 @@ class Menu:
                     self.current_y -= 1
                 elif self.offset > 0:
                     self.offset -= 1
-            # TODO Add action - function for this?
             elif c in (10, ord('o'), ord('O')):
-                action(self, stdscr)
+                if action is not None:
+                    action(self, stdscr)
             self.render_menu(stdscr, items)
 
     def get_currently_selected(self):
@@ -161,7 +161,8 @@ def toggle_item(menu, stdscr):
 def restaurant_items_loop(menu, stdscr):
     new_items = get_restaurant_info(
         menu.get_currently_selected())
-    menu.scroll_loop(stdscr, None, items=new_items)
+    new_menu = Menu(new_items)
+    new_menu.scroll_loop(stdscr, None, items=new_items)
 
 
 def get_restaurant_info(restaurant):
@@ -533,7 +534,7 @@ def main(stdscr):
             # render_menu(stdscr)
         elif c in (ord('f'), ord('F')):
             menu = filters_menu
-            menu.scroll_loop(stdscr, toggle_item, items=filters)
+            filters_menu.scroll_loop(stdscr, toggle_item, items=filters)
             # render_menu(stdscr)
         render_home(stdscr, search_name=search_name, search_text=user_input)
 
