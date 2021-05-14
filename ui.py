@@ -20,8 +20,15 @@ logo_small = """
 """[1:]
 
 
-and_params = set(("vegetarian", "vegan", "gluten-free", "takeaway"))
+current_path = ""
+
+and_params = ["Vegetarian", "Vegan", "Gluten free", "Takeaway"]
+price_param = ["0-300", "300-600", "600-"]
+cuisines_param = ["Czech", "International", "Italian", "English", "American", "Asian", "Indian", "Japanese", "Vietnamese",
+                  "Spanish", "Mediterranean", "French", "Thai", "Balkan", "Brazil", "Russian", "Chinese", "Greek", "Arabic", "Korean"]
 and_filters = []
+cuisines = []
+prices = []
 
 
 class TerminalTooSmall(Exception):
@@ -130,6 +137,11 @@ class Menu:
             elif c in (10, ord('o'), ord('O')):
                 if action is not None:
                     action(self, stdscr)
+            elif c in (ord('f'), ord('F')):
+                menu = filters_menu
+                filters_menu.scroll_loop(stdscr, toggle_item, items=filters)
+            elif c in (ord('r'), ord('R')):
+                return True
             self.render_menu(stdscr, items)
 
     def get_currently_selected(self):
@@ -143,19 +155,40 @@ class Menu:
                 return item
 
 
+filters = and_params + ["Cuisines", "Prices"]
+filters_menu = Menu(filters)
+cuisines_menu = Menu(cuisines_param)
+prices_menu = Menu(price_param)
+
+
 def string_to_param(string):
     return string.replace(" ", "-").lower()
 
 
 def toggle_item(menu, stdscr):
     item = menu.get_currently_selected_item()
+    if item.string_content == "Cuisines":
+        cuisines_menu.scroll_loop(stdscr, toggle_item, items=cuisines_param)
+        return
+    elif item.string_content == "Prices":
+        prices_menu.scroll_loop(stdscr, toggle_item, items=price_param)
+        return
     item.toggle_highlighted = not item.toggle_highlighted
     param_value = string_to_param(item.string_content)
     if item.toggle_highlighted:
-        if param_value in and_params:
+        if item.string_content in and_params:
             and_filters.append(param_value + "=true")
+        elif item.string_content in cuisines_param:
+            cuisines.append(param_value)
+        elif item.string_content in price_param:
+            prices.append(param_value)
     else:
-        and_filters.remove(param_value + "=true")
+        if item.string_content in and_params:
+            and_filters.remove(param_value + "=true")
+        elif item.string_content in cuisines:
+            cuisines.remove(param_value)
+        elif item.string_content in prices:
+            prices.remove(param_value)
 
 
 def restaurant_items_loop(menu, stdscr):
@@ -166,8 +199,11 @@ def restaurant_items_loop(menu, stdscr):
 
 
 def get_restaurant_info(restaurant):
-    restaurant["URL"] = re.match(
-        r"^.+?[^\/:](?=[?\/]|$)", restaurant["URL"]).group(0)
+    try:
+        restaurant["URL"] = re.match(
+            r"^.+?[^\/:](?=[?\/]|$)", restaurant["URL"]).group(0)
+    except:
+        pass
     days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday",
                     "Friday", "Saturday", "Sunday"]
     items = []
@@ -190,10 +226,6 @@ def get_restaurant_info(restaurant):
             else:
                 items.append(start + str(value))
     return items
-
-
-def get_filters():
-    return ["Vegetarian", "Vegan", "Gluten free", "Takeaway"]
 
 
 def get_restaurant_names(data):
@@ -246,7 +278,7 @@ def print_nav_bar_items(stdscr, y, x, max_x):
     x += 3
     space = max_len - x
     pc_text = "Prague College"
-    restaurants_text = "Restaurants"
+    restaurants_text = "All restaurants"
     cuisines_text = "Filters"
     login_text = "Login"
     sign_in_text = "Register"
@@ -265,20 +297,30 @@ def print_nav_bar_items(stdscr, y, x, max_x):
         print_keyword_string(stdscr, y, x, text)
         x += len(text) + gap
 
-# TODO
-# One function to render both the list of restaurants and the info
-# On the info page, enter should "zoom" to field - making it fullscreen
-# if the x is too small print ...
-# if the y is too small, scroll
+
+def format_request_url(path):
+    all_filters = []
+    url = "http://localhost:8080/" + path + "?"
+    if path == "restaurants":
+        all_filters.append("radius=ignore")
+    if len(and_filters) > 0:
+        all_filters += and_filters
+    if len(cuisines) > 0:
+        all_filters.append("cuisine=" + ",".join(cuisines))
+    if len(prices) > 0:
+        all_filters.append("price-range=" + ",".join(prices))
+    return url + "&".join(all_filters)
 
 
-def get_data(stdscr):
+def get_data(stdscr, path):
     try:
-        r = requests.get(
-            "http://localhost:8080/prague-college/restaurants?" + "&".join(and_filters))
+        url = format_request_url(path)
+        r = requests.get(url)
         data = json.loads(r.text)
+        if data["Data"] is None:
+            return [dict({"Name": "No restaurants found"})]
         return data["Data"]
-    except:
+    except Exception as e:
         stdscr.clear()
         stdscr.addstr("Couldn't connect to the server, press any key to exit")
         stdscr.getch()
@@ -322,8 +364,11 @@ def render_menu(stdscr):
 def display_restaurant_info(stdscr, restaurant):
     stdscr.clear()
     # Clean up URL
-    restaurant["URL"] = re.match(
-        r"^.+?[^\/:](?=[?\/]|$)", restaurant["URL"]).group(0)
+    try:
+        restaurant["URL"] = re.match(
+            r"^.+?[^\/:](?=[?\/]|$)", restaurant["URL"]).group(0)
+    except:
+        pass
     y, x = stdscr.getyx()
     main_box = curses.newwin(y, x)
     main_box.box()
@@ -517,8 +562,6 @@ def main(stdscr):
     curses.init_pair(2, curses.COLOR_RED, curses.COLOR_WHITE)
     curses.init_pair(3, curses.COLOR_RED, -1)
     render_home(stdscr)
-    filters = get_filters()
-    filters_menu = Menu(filters)
     user_input = ""
     search_name = "name"
     while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
@@ -538,10 +581,20 @@ def main(stdscr):
             render_home(stdscr, search_name=search_name,
                         search_text=user_input)
         elif c in (ord('p'), ord('P')):
-            data = get_data(stdscr)
-            menu = Menu(data)
-            menu.scroll_loop(stdscr, restaurant_items_loop)
+            current_path = "prague-college/restaurants"
+            cont = True
+            while cont:
+                data = get_data(stdscr, current_path)
+                menu = Menu(data)
+                cont = menu.scroll_loop(stdscr, restaurant_items_loop)
             # render_menu(stdscr)
+        elif c in (ord('a'), ord('A')):
+            current_path = "restaurants"
+            cont = True
+            while cont:
+                data = get_data(stdscr, current_path)
+                menu = Menu(data)
+                cont = menu.scroll_loop(stdscr, restaurant_items_loop)
         elif c in (ord('f'), ord('F')):
             menu = filters_menu
             filters_menu.scroll_loop(stdscr, toggle_item, items=filters)
