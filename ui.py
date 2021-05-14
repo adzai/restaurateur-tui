@@ -34,12 +34,13 @@ class MenuItem:
         self.y = y
         self.string_content = string_content
         self.highlighted = highlighted
+        self.toggle_highlighted = False
         self.max_x = 0
 
     def update_max(self, max_x):
         self.max_x = max_x
         self.string_content = self.string_content if self.x + \
-            len(self.string_content) < max_x - 1 else self.string_content[:max_x-self.x-1]
+            len(self.string_content) < max_x - 1 else self.string_content[:max_x-self.x-4] + "..."
 
 
 class Menu:
@@ -60,9 +61,19 @@ class Menu:
             self.menu_items.append(MenuItem(self.x, y, item, highlighted))
             y += 1
 
+    def update_items(self, stdscr):
+        max_x, max_y = stdscr.getmaxyx()
+        y = self.y
+        for item in self.menu_items:
+            item.highlighted = True if y == self.current_y + self.offset else False
+            y += 1
+
     def render_menu(self, stdscr, items):
-        self.menu_items = []
-        self.add_items(stdscr, items)
+        if len(self.menu_items) == 0:
+            self.menu_items = []
+            self.add_items(stdscr, items)
+        else:
+            self.update_items(stdscr)
         stdscr.clear()
         win_y, win_x = stdscr.getyx()
         main_box = curses.newwin(win_y, win_x)
@@ -77,7 +88,15 @@ class Menu:
             if y >= max_y:
                 break
             item.update_max(max_x)
-            if item.highlighted:
+            if item.toggle_highlighted and item.highlighted:
+                stdscr.attron(curses.color_pair(2))
+                stdscr.addstr(y, item.x, item.string_content)
+                stdscr.attroff(curses.color_pair(2))
+            elif item.toggle_highlighted:
+                stdscr.attron(curses.color_pair(3))
+                stdscr.addstr(y, item.x, item.string_content)
+                stdscr.attroff(curses.color_pair(3))
+            elif item.highlighted:
                 stdscr.addstr(y, item.x, item.string_content,
                               curses.A_STANDOUT)
             else:
@@ -85,7 +104,7 @@ class Menu:
             y += 1
         stdscr.refresh()
 
-    def scroll_loop(self, stdscr, items=[]):
+    def scroll_loop(self, stdscr, action, items=[]):
         if len(items) == 0:
             items = get_restaurant_names(self.data)
         self.render_menu(stdscr, items)
@@ -106,15 +125,29 @@ class Menu:
                     self.offset -= 1
             # TODO Add action - function for this?
             elif c in (10, ord('o'), ord('O')):
-                new_items = get_restaurant_info(
-                    self.get_currently_selected())
-                self.scroll_loop(stdscr, items=new_items)
+                action(self, stdscr)
             self.render_menu(stdscr, items)
 
     def get_currently_selected(self):
         for i, item in enumerate(self.menu_items):
             if item.y == self.current_y + self.offset:
                 return self.data[i]
+
+    def get_currently_selected_item(self):
+        for i, item in enumerate(self.menu_items):
+            if item.y == self.current_y + self.offset:
+                return item
+
+
+def toggle_item(menu, stdscr):
+    item = menu.get_currently_selected_item()
+    item.toggle_highlighted = not item.toggle_highlighted
+
+
+def restaurant_items_loop(menu, stdscr):
+    new_items = get_restaurant_info(
+        menu.get_currently_selected())
+    menu.scroll_loop(stdscr, None, items=new_items)
 
 
 def get_restaurant_info(restaurant):
@@ -144,13 +177,17 @@ def get_restaurant_info(restaurant):
     return items
 
 
+def get_filters():
+    return ["Vegetarian", "Vegan", "Gluten free"]
+
+
 def get_restaurant_names(data):
     return [restaurant["Name"] for restaurant in data]
 
 # TODO handle resizing search_input
 
 
-def render_home(stdscr, search_text=None):
+def render_home(stdscr, search_name="name", search_text=None):
     stdscr.clear()
     y, x = stdscr.getmaxyx()
     if y < 21 or x < 57:
@@ -184,7 +221,8 @@ def render_home(stdscr, search_text=None):
                       main_box_max_x - main_box_x)
     print_nav_bar_items(stdscr, nav_bar_y, nav_bar_x, nav_bar_max_x)
     # TODO: Have a toggle key which will toggle between search name and search address
-    print_keyword_string(stdscr, search_box_y, search_box_x, "Search name: " +
+    search_string = "Search " + search_name + ": "
+    print_keyword_string(stdscr, search_box_y, search_box_x, search_string +
                          search_text)
 
 
@@ -353,8 +391,7 @@ def display_restaurants(stdscr, restaurants, y, x, user_y, offset):
 def print_help_string(stdscr, y, x, max_x):
     help_text = """Welcome to restaurateur TUI!
     This interface is controlled via keyboard shortcuts. To access specific
-    elements you can use the key that is highlighted in yellow and underlined,
-    eg: to enter the search box press 'S' or 's'. To leave any window/mode press escape.
+    elements you can use the key that is highlighted in yellow and underlined. Access insert mode with "I" or "i", exit it with escape.
     If you need help with any of the commands press '?'"""
     max_len = max_x - 2
     x += 2
@@ -379,7 +416,7 @@ def print_keyword_string(stdscr, y, x, string):
     stdscr.addstr(y + 1, x + 2, string[1:])
 
 
-def get_user_input(stdscr, y, x, chars=None):
+def get_user_input(stdscr, y, x, search_name="name", chars=None):
     chars = "" if chars is None else chars
     orig_x = x if chars == "" else x - len(chars)
     curses.curs_set(1)
@@ -402,7 +439,7 @@ def get_user_input(stdscr, y, x, chars=None):
             elif code == 27:
                 curses.curs_set(0)
                 chars = chars[:-1]
-                render_home(stdscr, search_text=chars)
+                render_home(stdscr, search_name=search_name, search_text=chars)
                 return chars, False
             elif x > max_x:
                 diff = max_x - x - 1
@@ -419,7 +456,7 @@ def get_user_input(stdscr, y, x, chars=None):
             elif isinstance(char, str):
                 stdscr.addstr(y, x, char)
                 x += 1
-        render_home(stdscr, search_text=chars)
+        render_home(stdscr, search_name=search_name, search_text=chars)
     return chars, False
 
 
@@ -430,12 +467,13 @@ def render_help_menu(stdscr):
     stdscr.refresh()
     help_box.refresh()
     stdscr.addstr(1, 1, "Esc : Exits current mode/window")
-    stdscr.addstr(2, 1, "S, s: Enter search input box")
+    stdscr.addstr(2, 1, "I, i: Enters insert mode")
     stdscr.addstr(3, 1, "P, p: Displays restaurants around Prague college")
-    stdscr.addstr(4, 1, "L, l: Displays log in page")
-    stdscr.addstr(5, 1, "S, S: Displays sign up page")
+    stdscr.addstr(4, 1, "S, s: Toggles between search name/address")
+    stdscr.addstr(5, 1, "R, r: Displays register page")
+    stdscr.addstr(6, 1, "L, l: Displays login page")
     stdscr.addstr(
-        6, 1, "F, f: Displays filter page menu to search based on filters")
+        7, 1, "F, f: Displays filter page menu to search based on filters")
 
 
 def print_help_menu(stdscr):
@@ -450,27 +488,38 @@ def main(stdscr):
     curses.start_color()
     curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_YELLOW, -1)
+    curses.init_pair(2, curses.COLOR_RED, curses.COLOR_WHITE)
+    curses.init_pair(3, curses.COLOR_RED, -1)
     render_home(stdscr)
     user_input = ""
+    search_name = "name"
     while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
         if c in (ord('s'), ord('S')):
+            search_name = "name" if search_name == "address" else "address"
+        if c in (ord('i'), ord('I')):
             y, x = stdscr.getyx()
             stdscr.move(y, x)
             user_input, finished = get_user_input(
-                stdscr, y, x, chars=user_input)
+                stdscr, y, x, search_name=search_name, chars=user_input)
             if finished:
                 # process input
                 user_input = ""
                 render_home(stdscr, search_text=user_input)
         elif c == ord('?'):
             print_help_menu(stdscr)
-            render_home(stdscr, search_text=user_input)
+            render_home(stdscr, search_name=search_name,
+                        search_text=user_input)
         elif c in (ord('p'), ord('P')):
             data = get_data(stdscr)
             menu = Menu(data)
-            menu.scroll_loop(stdscr)
+            menu.scroll_loop(stdscr, restaurant_items_loop)
             # render_menu(stdscr)
-        render_home(stdscr, search_text=user_input)
+        elif c in (ord('f'), ord('F')):
+            data = get_filters()
+            menu = Menu(data)
+            menu.scroll_loop(stdscr, toggle_item, items=data)
+            # render_menu(stdscr)
+        render_home(stdscr, search_name=search_name, search_text=user_input)
 
 
 if __name__ == "__main__":
