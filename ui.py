@@ -22,7 +22,7 @@ logo_small = """
 
 current_path = ""
 
-and_params = ["Vegetarian", "Vegan", "Gluten free", "Takeaway"]
+and_params = ["Vegetarian", "Vegan", "Gluten free", "Takeaway", "Has menu"]
 price_param = ["0-300", "300-600", "600-"]
 cuisines_param = ["Czech", "International", "Italian", "English", "American", "Asian", "Indian", "Japanese", "Vietnamese",
                   "Spanish", "Mediterranean", "French", "Thai", "Balkan", "Brazil", "Russian", "Chinese", "Greek", "Arabic", "Korean"]
@@ -233,8 +233,6 @@ def get_restaurant_info(restaurant):
 def get_restaurant_names(data):
     return [restaurant["Name"] for restaurant in data]
 
-# TODO handle resizing search_input
-
 
 def render_home(stdscr, search_name="name", search_text=None):
     stdscr.clear()
@@ -269,7 +267,6 @@ def render_home(stdscr, search_name="name", search_text=None):
     print_help_string(stdscr, main_box_y, main_box_x,
                       main_box_max_x - main_box_x)
     print_nav_bar_items(stdscr, nav_bar_y, nav_bar_x, nav_bar_max_x)
-    # TODO: Have a toggle key which will toggle between search name and search address
     search_string = "Search " + search_name + ": "
     print_keyword_string(stdscr, search_box_y, search_box_x, search_string +
                          search_text)
@@ -489,10 +486,12 @@ def print_keyword_string(stdscr, y, x, string):
     stdscr.addstr(y + 1, x + 2, string[1:])
 
 
+# TODO fix input len
 def get_user_input(stdscr, y, x, search_name="name", chars=None):
     chars = "" if chars is None else chars
     orig_x = x if chars == "" else x - len(chars)
     curses.curs_set(1)
+    offset = 0
     while True:
         char = stdscr.get_wch()
         _, max_x = stdscr.getmaxyx()
@@ -506,30 +505,39 @@ def get_user_input(stdscr, y, x, search_name="name", chars=None):
             # backspace
             if code == 263 or code == 127 or code == 8:
                 chars = chars[:-2]
-                x = max(orig_x, x - 1)
-                stdscr.addstr(y, x, " ")
-                stdscr.addstr(y, x, "")
+                if offset > 0:
+                    offset -= 1
+                else:
+                    x = max(orig_x, x - 1)
+                sent_chars = chars[offset:]
             elif code == 27:
                 curses.curs_set(0)
                 chars = chars[:-1]
                 render_home(stdscr, search_name=search_name, search_text=chars)
                 return chars, False
-            elif x > max_x:
-                diff = max_x - x - 1
-                x = max_x
-                chars = chars[:diff]
-            elif x == max_x:
-                chars = chars[:-1]
+            # elif x == max_:
+            #     chars = chars[offset:-1]
             elif chars[-1] == "\n":
                 curses.curs_set(0)
+                # stdscr.clear()
+                # stdscr.addstr(3, 3, chars[:-1])
+                # stdscr.getch()
                 return chars[:-1], True
             # escape
+            # TODO: Handle resizing
             elif code == 410:  # resize char
+                # offset = x - max_x
                 chars = chars[:-1]
+                sent_chars = chars[offset:]
             elif isinstance(char, str):
-                stdscr.addstr(y, x, char)
-                x += 1
-        render_home(stdscr, search_name=search_name, search_text=chars)
+                if x > max_x:
+                    # x = max_x
+                    offset += 1
+                    sent_chars = chars[offset:]
+                else:
+                    x += 1
+                    sent_chars = chars
+        render_home(stdscr, search_name=search_name, search_text=sent_chars)
     return chars, False
 
 
@@ -606,6 +614,7 @@ def main(stdscr):
         render_home(stdscr, search_name=search_name, search_text=user_input)
 
 
+# TODO: Add status line
 if __name__ == "__main__":
     os.environ.setdefault('ESCDELAY', '25')
     curses.wrapper(main)
