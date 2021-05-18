@@ -142,6 +142,8 @@ class Menu:
                 filters_menu.scroll_loop(stdscr, toggle_item, items=filters)
             elif c in (ord('r'), ord('R')):
                 return True
+            elif c == ord('?'):
+                print_help_menu(stdscr)
             self.render_menu(stdscr, items)
 
     def get_currently_selected(self):
@@ -545,6 +547,8 @@ def render_help_menu(stdscr):
     stdscr.addstr(6, 1, "L, l: Displays login page")
     stdscr.addstr(
         7, 1, "F, f: Displays filter page menu to search based on filters")
+    stdscr.addstr(
+        8, 1, "R, r: Refreshes restaurants page")
 
 
 def print_help_menu(stdscr):
