@@ -524,14 +524,13 @@ def get_user_input(stdscr, y, x, search_name="name", chars=None):
                 # stdscr.getch()
                 return chars[:-1], True
             # escape
-            # TODO: Handle resizing
             elif code == 410:  # resize char
-                # offset = x - max_x
-                chars = chars[:-1]
-                sent_chars = chars[offset:]
+                chars = ""
+                sent_chars = chars
+                x = orig_x
+                offset = 0
             elif isinstance(char, str):
                 if x > max_x:
-                    # x = max_x
                     offset += 1
                     sent_chars = chars[offset:]
                 else:
