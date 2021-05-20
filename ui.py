@@ -1,3 +1,4 @@
+import argparse
 import curses
 import json
 import os
@@ -19,16 +20,234 @@ logo_small = """
   ┴└─└─┘└─┘ ┴ ┴ ┴└─┘┴└─┴ ┴ ┴ └─┘└─┘┴└─
 """[1:]
 
+parser = argparse.ArgumentParser(
+    description='Restaurateur TUI')
+parser.add_argument('--host', help="Provide restaurateur API host URL")
+args = parser.parse_args()
 
-current_path = ""
+
+BASE_URL = args.host if args.host else "https://api.restaurateur.tech"
+
 
 and_params = ["Vegetarian", "Vegan", "Gluten free", "Takeaway", "Has menu"]
 price_param = ["0-300", "300-600", "600-"]
 cuisines_param = ["Czech", "International", "Italian", "English", "American", "Asian", "Indian", "Japanese", "Vietnamese",
                   "Spanish", "Mediterranean", "French", "Thai", "Balkan", "Brazil", "Russian", "Chinese", "Greek", "Arabic", "Korean"]
-and_filters = []
-cuisines = []
-prices = []
+
+
+# TODO: add some vim key bindings
+
+class User:
+    def __init__(self):
+        self.current_path = ""
+        self.and_filters = []
+        self.cuisines = []
+        self.prices = []
+
+    def format_request_url(self):
+        all_filters = []
+        url = BASE_URL + "/" + self.current_path + "?"
+        if self.current_path == "restaurants":
+            all_filters.append("radius=ignore")
+        if len(self.and_filters) > 0:
+            all_filters += self.and_filters
+        if len(self.cuisines) > 0:
+            all_filters.append("cuisine=" + ",".join(self.cuisines))
+        if len(self.prices) > 0:
+            all_filters.append("price-range=" + ",".join(self.prices))
+        return url + "&".join(all_filters)
+
+
+class TUI:
+    def __init__(self, stdscr, user):
+        self.stdscr = stdscr
+        self.search_name = "name"
+        self.user = user
+        self.search_text = None
+        self.search_submitted = False
+
+    def render_home(self):
+        self.stdscr.clear()
+        y, x = self.stdscr.getmaxyx()
+        if y < 20 or x < 40:
+            raise TerminalTooSmall(x, y)
+        elif y > 20 and x > 60:
+            self.stdscr.addstr(logo_big)
+        else:
+            self.stdscr.addstr(1, 0, logo_small)
+        nav_bar_y = int(y*0.25)
+        nav_bar_x = 5
+        search_box_y = int(y*0.9)
+        search_box_x = 5
+        main_box_y = int(y*0.4)
+        main_box_x = 5
+        main_box_max_x = x-10
+        nav_bar_max_x = x-10
+        nav_bar = curses.newwin(3, nav_bar_max_x, nav_bar_y, nav_bar_x)
+        nav_bar.box()
+        main_box = curses.newwin(
+            int(y*0.5), main_box_max_x, main_box_y, main_box_x)
+        main_box.box()
+        search_box = curses.newwin(3, x-10, search_box_y, search_box_x)
+        search_box.box()
+        self.stdscr.refresh()
+        nav_bar.refresh()
+        main_box.refresh()
+        search_box.refresh()
+        self.search_text = "" if self.search_text is None else self.search_text
+        _, max_x = main_box.getmaxyx()
+        self.print_help_string(main_box_y, main_box_x,
+                               main_box_max_x - main_box_x)
+        self.print_nav_bar_items(
+            nav_bar_y, nav_bar_x, nav_bar_max_x)
+        search_string = "Search " + self.search_name + ": "
+        self.print_keyword_string(search_box_y,
+                                  search_box_x, search_string + self.search_text)
+
+    def get_user_input(self, y, x):
+        chars = "" if self.search_text is None else self.search_text
+        orig_x = x if chars == "" else x - len(chars)
+        curses.curs_set(1)
+        offset = 0
+        while True:
+            char = self.stdscr.get_wch()
+            _, max_x = self.stdscr.getmaxyx()
+            max_x -= orig_x
+            chars += char if isinstance(char, str) else chr(char)
+            code = ord(char) if isinstance(char, str) else char
+            # chars += str(code)
+            # x += len(str(code))
+            # scroll search bar when char limit reached?
+            if len(chars) > 0:
+                # backspace
+                if code == 263 or code == 127 or code == 8:
+                    chars = chars[:-2]
+                    if offset > 0:
+                        offset -= 1
+                    else:
+                        x = max(orig_x, x - 1)
+                    self.search_text = chars[offset:]
+                elif code == 27:
+                    curses.curs_set(0)
+                    self.search_text = chars[:-1]
+                    self.render_home()
+                    return
+                # elif x == max_:
+                #     chars = chars[offset:-1]
+                elif chars[-1] == "\n":
+                    curses.curs_set(0)
+                    # stdscr.clear()
+                    # stdscr.addstr(3, 3, chars[:-1])
+                    # stdscr.getch()
+                    self.search_submitted = True
+                    self.search_text = chars[:-1]
+                    return
+                # escape
+                elif code == 410:  # resize char
+                    chars = ""
+                    self.search_text = chars
+                    x = orig_x
+                    offset = 0
+                elif isinstance(char, str):
+                    if x > max_x:
+                        offset += 1
+                        self.search_text = chars[offset:]
+                    else:
+                        x += 1
+                        self.search_text = chars
+            self.render_home()
+        self.search_text = chars
+
+    def print_help_menu(self):
+        render_help_menu()
+        while (c := self.stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
+            render_help_menu()
+
+    def render_help_menu(self):
+        self.stdscr.clear()
+        help_box = curses.newwin(0, 0)
+        help_box.box()
+        self.stdscr.refresh()
+        help_box.refresh()
+        self.stdscr.addstr(1, 1, "Esc : Exits current mode/window")
+        self.stdscr.addstr(2, 1, "I, i: Enters insert mode")
+        self.stdscr.addstr(
+            3, 1, "P, p: Displays restaurants around Prague college")
+        self.stdscr.addstr(4, 1, "S, s: Toggles between search name/address")
+        self.stdscr.addstr(5, 1, "R, r: Displays register page")
+        self.stdscr.addstr(6, 1, "L, l: Displays login page")
+        self.stdscr.addstr(
+            7, 1, "F, f: Displays filter page menu to search based on filters")
+        self.stdscr.addstr(
+            8, 1, "R, r: Refreshes restaurants page")
+
+    def get_data(self, user):
+        try:
+            url = user.format_request_url()
+            r = requests.get(url)
+            data = json.loads(r.text)
+            if data["Data"] is None:
+                return [dict({"Name": "No restaurants found"})]
+            return data["Data"]
+        except Exception as e:
+            self.stdscr.clear()
+            self.stdscr.addstr(str(e))
+            self.stdscr.addstr(
+                "Couldn't connect to the server, press any key to exit")
+            self.stdscr.getch()
+            sys.exit(1)
+
+    def print_keyword_string(self, y, x, string):
+        self.stdscr.addch(y + 1, x + 1, string[0], curses.color_pair(1) +
+                          curses.A_UNDERLINE)
+        self.stdscr.addstr(y + 1, x + 2, string[1:])
+
+    def print_nav_bar_items(self, y, x, max_x):
+        max_len = max_x
+        x += 3
+        space = max_len - x
+        pc_text = "Prague College"
+        restaurants_text = "All restaurants"
+        cuisines_text = "Filters"
+        login_text = "Login"
+        sign_in_text = "Register"
+        text_list = [pc_text, restaurants_text,
+                     cuisines_text, login_text, sign_in_text]
+        updated = len(text_list) - 1
+        while len(" ".join(text_list)) >= max_x - x:
+            text_list[updated] = text_list[updated][0] + "..."
+            if updated == 0:
+                break
+            updated -= 1
+        total_len = sum(map(len, text_list))
+        space_total = space - total_len
+        gap = space_total // (len(text_list) - 1)
+        for text in text_list:
+            self.print_keyword_string(y, x, text)
+            x += len(text) + gap
+
+    def print_help_string(self, y, x, max_x):
+        help_text = """Welcome to restaurateur TUI!
+        This interface is controlled via keyboard shortcuts. To access specific
+        elements you can use the key that is highlighted in yellow and underlined. Access insert mode with "I" or "i", exit it with escape.
+        If you need help with any of the commands press '?'"""
+        max_len = max_x - 2
+        x += 2
+        if max_x < 45:
+            help_text = "Press ? for help"
+        count = x
+        orig_x = x
+        y += 1
+        for word in help_text.split():
+            word += " "
+            count += len(word)
+            if count + orig_x >= max_len:
+                y += 1
+                x = orig_x
+                count = x
+            for char in word:
+                self.stdscr.addch(y, x, char)
+                x += 1
 
 
 class TerminalTooSmall(Exception):
@@ -55,7 +274,7 @@ class MenuItem:
 
 
 class Menu:
-    def __init__(self, data):
+    def __init__(self, data, user, filters_menu=None):
         # TODO: add these as constants for windows and use everywhere
         self.x = 2
         self.y = 1
@@ -63,6 +282,7 @@ class Menu:
         self.current_y = self.y
         self.menu_items = []
         self.offset = 0
+        self.user = user
 
     def add_items(self, stdscr, items):
         max_x, max_y = stdscr.getmaxyx()
@@ -138,7 +358,6 @@ class Menu:
                 if action is not None:
                     action(self, stdscr)
             elif c in (ord('f'), ord('F')):
-                menu = filters_menu
                 filters_menu.scroll_loop(stdscr, toggle_item, items=filters)
             elif c in (ord('r'), ord('R')):
                 return True
@@ -157,12 +376,6 @@ class Menu:
                 return item
 
 
-filters = and_params + ["Cuisines", "Prices"]
-filters_menu = Menu(filters)
-cuisines_menu = Menu(cuisines_param)
-prices_menu = Menu(price_param)
-
-
 def string_to_param(string):
     return string.replace(" ", "-").lower()
 
@@ -179,18 +392,18 @@ def toggle_item(menu, stdscr):
     param_value = string_to_param(item.string_content)
     if item.toggle_highlighted:
         if item.string_content in and_params:
-            and_filters.append(param_value + "=true")
+            menu.user.and_filters.append(param_value + "=true")
         elif item.string_content in cuisines_param:
-            cuisines.append(param_value)
+            menu.user.cuisines.append(param_value)
         elif item.string_content in price_param:
-            prices.append(param_value)
+            menu.user.prices.append(param_value)
     else:
         if item.string_content in and_params:
-            and_filters.remove(param_value + "=true")
+            menu.user.and_filters.remove(param_value + "=true")
         elif item.string_content in cuisines:
-            cuisines.remove(param_value)
+            menu.user.cuisines.remove(param_value)
         elif item.string_content in prices:
-            prices.remove(param_value)
+            menu.user.prices.remove(param_value)
 
 
 def restaurant_items_loop(menu, stdscr):
@@ -232,98 +445,6 @@ def get_restaurant_info(restaurant):
 
 def get_restaurant_names(data):
     return [restaurant["Name"] for restaurant in data]
-
-
-def render_home(stdscr, search_name="name", search_text=None):
-    stdscr.clear()
-    y, x = stdscr.getmaxyx()
-    if y < 20 or x < 40:
-        raise TerminalTooSmall(x, y)
-    elif y > 20 and x > 60:
-        stdscr.addstr(logo_big)
-    else:
-        stdscr.addstr(1, 0, logo_small)
-    nav_bar_y = int(y*0.25)
-    nav_bar_x = 5
-    search_box_y = int(y*0.9)
-    search_box_x = 5
-    main_box_y = int(y*0.4)
-    main_box_x = 5
-    main_box_max_x = x-10
-    nav_bar_max_x = x-10
-    nav_bar = curses.newwin(3, nav_bar_max_x, nav_bar_y, nav_bar_x)
-    nav_bar.box()
-    main_box = curses.newwin(
-        int(y*0.5), main_box_max_x, main_box_y, main_box_x)
-    main_box.box()
-    search_box = curses.newwin(3, x-10, search_box_y, search_box_x)
-    search_box.box()
-    stdscr.refresh()
-    nav_bar.refresh()
-    main_box.refresh()
-    search_box.refresh()
-    search_text = "" if search_text is None else search_text
-    _, max_x = main_box.getmaxyx()
-    print_help_string(stdscr, main_box_y, main_box_x,
-                      main_box_max_x - main_box_x)
-    print_nav_bar_items(stdscr, nav_bar_y, nav_bar_x, nav_bar_max_x)
-    search_string = "Search " + search_name + ": "
-    print_keyword_string(stdscr, search_box_y, search_box_x, search_string +
-                         search_text)
-
-
-def print_nav_bar_items(stdscr, y, x, max_x):
-    max_len = max_x
-    x += 3
-    space = max_len - x
-    pc_text = "Prague College"
-    restaurants_text = "All restaurants"
-    cuisines_text = "Filters"
-    login_text = "Login"
-    sign_in_text = "Register"
-    text_list = [pc_text, restaurants_text,
-                 cuisines_text, login_text, sign_in_text]
-    updated = len(text_list) - 1
-    while len(" ".join(text_list)) >= max_x - x:
-        text_list[updated] = text_list[updated][0] + "..."
-        if updated == 0:
-            break
-        updated -= 1
-    total_len = sum(map(len, text_list))
-    space_total = space - total_len
-    gap = space_total // (len(text_list) - 1)
-    for text in text_list:
-        print_keyword_string(stdscr, y, x, text)
-        x += len(text) + gap
-
-
-def format_request_url(path):
-    all_filters = []
-    url = "http://localhost:8080/" + path + "?"
-    if path == "restaurants":
-        all_filters.append("radius=ignore")
-    if len(and_filters) > 0:
-        all_filters += and_filters
-    if len(cuisines) > 0:
-        all_filters.append("cuisine=" + ",".join(cuisines))
-    if len(prices) > 0:
-        all_filters.append("price-range=" + ",".join(prices))
-    return url + "&".join(all_filters)
-
-
-def get_data(stdscr, path):
-    try:
-        url = format_request_url(path)
-        r = requests.get(url)
-        data = json.loads(r.text)
-        if data["Data"] is None:
-            return [dict({"Name": "No restaurants found"})]
-        return data["Data"]
-    except Exception as e:
-        stdscr.clear()
-        stdscr.addstr("Couldn't connect to the server, press any key to exit")
-        stdscr.getch()
-        sys.exit(1)
 
 
 def render_menu(stdscr):
@@ -456,112 +577,12 @@ def display_restaurants(stdscr, restaurants, y, x, user_y, offset):
     return number_of_restaurants
 
 
-def print_help_string(stdscr, y, x, max_x):
-    help_text = """Welcome to restaurateur TUI!
-    This interface is controlled via keyboard shortcuts. To access specific
-    elements you can use the key that is highlighted in yellow and underlined. Access insert mode with "I" or "i", exit it with escape.
-    If you need help with any of the commands press '?'"""
-    max_len = max_x - 2
-    x += 2
-    if max_x < 45:
-        help_text = "Press ? for help"
-    count = x
-    orig_x = x
-    y += 1
-    for word in help_text.split():
-        word += " "
-        count += len(word)
-        if count + orig_x >= max_len:
-            y += 1
-            x = orig_x
-            count = x
-        for char in word:
-            stdscr.addch(y, x, char)
-            x += 1
-
-
-def print_keyword_string(stdscr, y, x, string):
-    stdscr.addch(y + 1, x + 1, string[0], curses.color_pair(1) +
-                 curses.A_UNDERLINE)
-    stdscr.addstr(y + 1, x + 2, string[1:])
-
-
-# TODO fix input len
-def get_user_input(stdscr, y, x, search_name="name", chars=None):
-    chars = "" if chars is None else chars
-    orig_x = x if chars == "" else x - len(chars)
-    curses.curs_set(1)
-    offset = 0
-    while True:
-        char = stdscr.get_wch()
-        _, max_x = stdscr.getmaxyx()
-        max_x -= orig_x
-        chars += char if isinstance(char, str) else chr(char)
-        code = ord(char) if isinstance(char, str) else char
-        # chars += str(code)
-        # x += len(str(code))
-        # scroll search bar when char limit reached?
-        if len(chars) > 0:
-            # backspace
-            if code == 263 or code == 127 or code == 8:
-                chars = chars[:-2]
-                if offset > 0:
-                    offset -= 1
-                else:
-                    x = max(orig_x, x - 1)
-                sent_chars = chars[offset:]
-            elif code == 27:
-                curses.curs_set(0)
-                chars = chars[:-1]
-                render_home(stdscr, search_name=search_name, search_text=chars)
-                return chars, False
-            # elif x == max_:
-            #     chars = chars[offset:-1]
-            elif chars[-1] == "\n":
-                curses.curs_set(0)
-                # stdscr.clear()
-                # stdscr.addstr(3, 3, chars[:-1])
-                # stdscr.getch()
-                return chars[:-1], True
-            # escape
-            elif code == 410:  # resize char
-                chars = ""
-                sent_chars = chars
-                x = orig_x
-                offset = 0
-            elif isinstance(char, str):
-                if x > max_x:
-                    offset += 1
-                    sent_chars = chars[offset:]
-                else:
-                    x += 1
-                    sent_chars = chars
-        render_home(stdscr, search_name=search_name, search_text=sent_chars)
-    return chars, False
-
-
-def render_help_menu(stdscr):
-    stdscr.clear()
-    help_box = curses.newwin(0, 0)
-    help_box.box()
-    stdscr.refresh()
-    help_box.refresh()
-    stdscr.addstr(1, 1, "Esc : Exits current mode/window")
-    stdscr.addstr(2, 1, "I, i: Enters insert mode")
-    stdscr.addstr(3, 1, "P, p: Displays restaurants around Prague college")
-    stdscr.addstr(4, 1, "S, s: Toggles between search name/address")
-    stdscr.addstr(5, 1, "R, r: Displays register page")
-    stdscr.addstr(6, 1, "L, l: Displays login page")
-    stdscr.addstr(
-        7, 1, "F, f: Displays filter page menu to search based on filters")
-    stdscr.addstr(
-        8, 1, "R, r: Refreshes restaurants page")
-
-
-def print_help_menu(stdscr):
-    render_help_menu(stdscr)
-    while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
-        render_help_menu(stdscr)
+# FIXME
+user = User()
+filters = and_params + ["Cuisines", "Prices"]
+filters_menu = Menu(filters, user)
+cuisines_menu = Menu(cuisines_param, user)
+prices_menu = Menu(price_param, user)
 
 
 def main(stdscr):
@@ -572,45 +593,43 @@ def main(stdscr):
     curses.init_pair(1, curses.COLOR_YELLOW, -1)
     curses.init_pair(2, curses.COLOR_RED, curses.COLOR_WHITE)
     curses.init_pair(3, curses.COLOR_RED, -1)
-    render_home(stdscr)
-    user_input = ""
-    search_name = "name"
+    tui = TUI(stdscr, user)
+    tui.render_home()
     while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
         if c in (ord('s'), ord('S')):
-            search_name = "name" if search_name == "address" else "address"
+            tui.search_name = "name" if tui.search_name == "address" else "address"
         if c in (ord('i'), ord('I')):
-            y, x = stdscr.getyx()
-            stdscr.move(y, x)
-            user_input, finished = get_user_input(
-                stdscr, y, x, search_name=search_name, chars=user_input)
-            if finished:
+            y, x = tui.stdscr.getyx()
+            tui.stdscr.move(y, x)
+            tui.get_user_input(y, x)
+            if tui.search_submitted:
                 # process input
-                user_input = ""
-                render_home(stdscr, search_text=user_input)
+                tui.search_submitted = False
+                tui.search_text = None
+                tui.render_home()
         elif c == ord('?'):
-            print_help_menu(stdscr)
-            render_home(stdscr, search_name=search_name,
-                        search_text=user_input)
+            tui.print_help_menu()
+            tui.render_home()
         elif c in (ord('p'), ord('P')):
-            current_path = "prague-college/restaurants"
+            user.current_path = "prague-college/restaurants"
             cont = True
             while cont:
-                data = get_data(stdscr, current_path)
-                menu = Menu(data)
+                data = tui.get_data(tui.user)
+                menu = Menu(data, user)
                 cont = menu.scroll_loop(stdscr, restaurant_items_loop)
             # render_menu(stdscr)
         elif c in (ord('a'), ord('A')):
-            current_path = "restaurants"
+            user.current_path = "restaurants"
             cont = True
             while cont:
-                data = get_data(stdscr, current_path)
-                menu = Menu(data)
+                data = tui.get_data(tui.user)
+                menu = Menu(data, user)
                 cont = menu.scroll_loop(stdscr, restaurant_items_loop)
         elif c in (ord('f'), ord('F')):
             menu = filters_menu
             filters_menu.scroll_loop(stdscr, toggle_item, items=filters)
             # render_menu(stdscr)
-        render_home(stdscr, search_name=search_name, search_text=user_input)
+        tui.render_home()
 
 
 # TODO: Add status line
