@@ -41,6 +41,7 @@ class User:
     def __init__(self):
         self.current_path = ""
         self.and_filters = []
+        self.search_param = None
         self.cuisines = []
         self.prices = []
 
@@ -49,6 +50,8 @@ class User:
         url = BASE_URL + "/" + self.current_path + "?"
         if self.current_path == "restaurants":
             all_filters.append("radius=ignore")
+        if self.search_param is not None:
+            all_filters.append(self.search_param)
         if len(self.and_filters) > 0:
             all_filters += self.and_filters
         if len(self.cuisines) > 0:
@@ -605,8 +608,16 @@ def main(stdscr):
             tui.get_user_input(y, x)
             if tui.search_submitted:
                 # process input
+                user.search_param = "search-" + tui.search_name + "=" + tui.search_text
+                user.current_path = "restaurants"
+                cont = True
+                while cont:
+                    data = tui.get_data(tui.user)
+                    menu = Menu(data, user)
+                    cont = tui.scroll_loop(menu, tui.restaurant_items_loop)
                 tui.search_submitted = False
                 tui.search_text = None
+                user.search_param = None
                 tui.render_home()
         elif c == ord('?'):
             tui.print_help_menu()
