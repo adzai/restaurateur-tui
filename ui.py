@@ -65,6 +65,10 @@ class TUI:
         self.user = user
         self.search_text = None
         self.search_submitted = False
+        self.filters = and_params + ["Cuisines", "Prices"]
+        self.cuisines_menu = Menu(cuisines_param, user)
+        self.prices_menu = Menu(price_param, user)
+        self.filters_menu = Menu(self.filters, user)
 
     def render_home(self):
         self.stdscr.clear()
@@ -103,6 +107,37 @@ class TUI:
         search_string = "Search " + self.search_name + ": "
         self.print_keyword_string(search_box_y,
                                   search_box_x, search_string + self.search_text)
+
+    def scroll_loop(self, menu, action, items=[]):
+        if len(items) == 0:
+            items = get_restaurant_names(menu.data)
+        menu.render_menu(self.stdscr, items)
+        while (c := self.stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
+            win_max_y, _ = self.stdscr.getmaxyx()
+            # max_y = number_of_restaurants - orig_y + 1
+            max_y = len(items) + menu.y - 1
+            if c in (ord('j'), ord('J')):
+                if menu.current_y == win_max_y - 2 or menu.current_y == max_y:
+                    if menu.offset + menu.current_y < max_y:
+                        menu.offset += 1
+                else:
+                    menu.current_y += 1
+            elif c in (ord('k'), ord('K')):
+                if menu.current_y > menu.y:
+                    menu.current_y -= 1
+                elif menu.offset > 0:
+                    menu.offset -= 1
+            elif c in (10, ord('o'), ord('O')):
+                if action is not None:
+                    action(menu)
+            elif c in (ord('f'), ord('F')):
+                self.scroll_loop(self.filters_menu,
+                                 self.toggle_item, items=self.filters)
+            elif c in (ord('r'), ord('R')):
+                return True
+            elif c == ord('?'):
+                print_help_menu()
+            menu.render_menu(self.stdscr, items)
 
     def get_user_input(self, y, x):
         chars = "" if self.search_text is None else self.search_text
@@ -249,6 +284,39 @@ class TUI:
                 self.stdscr.addch(y, x, char)
                 x += 1
 
+    def restaurant_items_loop(self, menu):
+        new_items = get_restaurant_info(
+            menu.get_currently_selected())
+        new_menu = Menu(new_items, self.user)
+        self.scroll_loop(new_menu, None, items=new_items)
+
+    def toggle_item(self, menu):
+        item = menu.get_currently_selected_item()
+        if item.string_content == "Cuisines":
+            self.scroll_loop(self.cuisines_menu, self.toggle_item,
+                             items=cuisines_param)
+            return
+        elif item.string_content == "Prices":
+            self.scroll_loop(self.prices_menu,
+                             self.toggle_item, items=price_param)
+            return
+        item.toggle_highlighted = not item.toggle_highlighted
+        param_value = string_to_param(item.string_content)
+        if item.toggle_highlighted:
+            if item.string_content in and_params:
+                menu.user.and_filters.append(param_value + "=true")
+            elif item.string_content in cuisines_param:
+                menu.user.cuisines.append(param_value)
+            elif item.string_content in price_param:
+                menu.user.prices.append(param_value)
+        else:
+            if item.string_content in and_params:
+                menu.user.and_filters.remove(param_value + "=true")
+            elif item.string_content in cuisines:
+                menu.user.cuisines.remove(param_value)
+            elif item.string_content in prices:
+                menu.user.prices.remove(param_value)
+
 
 class TerminalTooSmall(Exception):
     def __init__(self, x, y):
@@ -335,36 +403,6 @@ class Menu:
             y += 1
         stdscr.refresh()
 
-    def scroll_loop(self, stdscr, action, items=[]):
-        if len(items) == 0:
-            items = get_restaurant_names(self.data)
-        self.render_menu(stdscr, items)
-        while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
-            win_max_y, _ = stdscr.getmaxyx()
-            # max_y = number_of_restaurants - orig_y + 1
-            max_y = len(items) + self.y - 1
-            if c in (ord('j'), ord('J')):
-                if self.current_y == win_max_y - 2 or self.current_y == max_y:
-                    if self.offset + self.current_y < max_y:
-                        self.offset += 1
-                else:
-                    self.current_y += 1
-            elif c in (ord('k'), ord('K')):
-                if self.current_y > self.y:
-                    self.current_y -= 1
-                elif self.offset > 0:
-                    self.offset -= 1
-            elif c in (10, ord('o'), ord('O')):
-                if action is not None:
-                    action(self, stdscr)
-            elif c in (ord('f'), ord('F')):
-                filters_menu.scroll_loop(stdscr, toggle_item, items=filters)
-            elif c in (ord('r'), ord('R')):
-                return True
-            elif c == ord('?'):
-                print_help_menu(stdscr)
-            self.render_menu(stdscr, items)
-
     def get_currently_selected(self):
         for i, item in enumerate(self.menu_items):
             if item.y == self.current_y + self.offset:
@@ -378,39 +416,6 @@ class Menu:
 
 def string_to_param(string):
     return string.replace(" ", "-").lower()
-
-
-def toggle_item(menu, stdscr):
-    item = menu.get_currently_selected_item()
-    if item.string_content == "Cuisines":
-        cuisines_menu.scroll_loop(stdscr, toggle_item, items=cuisines_param)
-        return
-    elif item.string_content == "Prices":
-        prices_menu.scroll_loop(stdscr, toggle_item, items=price_param)
-        return
-    item.toggle_highlighted = not item.toggle_highlighted
-    param_value = string_to_param(item.string_content)
-    if item.toggle_highlighted:
-        if item.string_content in and_params:
-            menu.user.and_filters.append(param_value + "=true")
-        elif item.string_content in cuisines_param:
-            menu.user.cuisines.append(param_value)
-        elif item.string_content in price_param:
-            menu.user.prices.append(param_value)
-    else:
-        if item.string_content in and_params:
-            menu.user.and_filters.remove(param_value + "=true")
-        elif item.string_content in cuisines:
-            menu.user.cuisines.remove(param_value)
-        elif item.string_content in prices:
-            menu.user.prices.remove(param_value)
-
-
-def restaurant_items_loop(menu, stdscr):
-    new_items = get_restaurant_info(
-        menu.get_currently_selected())
-    new_menu = Menu(new_items)
-    new_menu.scroll_loop(stdscr, None, items=new_items)
 
 
 def get_restaurant_info(restaurant):
@@ -578,11 +583,6 @@ def display_restaurants(stdscr, restaurants, y, x, user_y, offset):
 
 
 # FIXME
-user = User()
-filters = and_params + ["Cuisines", "Prices"]
-filters_menu = Menu(filters, user)
-cuisines_menu = Menu(cuisines_param, user)
-prices_menu = Menu(price_param, user)
 
 
 def main(stdscr):
@@ -593,6 +593,7 @@ def main(stdscr):
     curses.init_pair(1, curses.COLOR_YELLOW, -1)
     curses.init_pair(2, curses.COLOR_RED, curses.COLOR_WHITE)
     curses.init_pair(3, curses.COLOR_RED, -1)
+    user = User()
     tui = TUI(stdscr, user)
     tui.render_home()
     while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
@@ -616,7 +617,7 @@ def main(stdscr):
             while cont:
                 data = tui.get_data(tui.user)
                 menu = Menu(data, user)
-                cont = menu.scroll_loop(stdscr, restaurant_items_loop)
+                cont = tui.scroll_loop(menu, tui.restaurant_items_loop)
             # render_menu(stdscr)
         elif c in (ord('a'), ord('A')):
             user.current_path = "restaurants"
@@ -624,10 +625,10 @@ def main(stdscr):
             while cont:
                 data = tui.get_data(tui.user)
                 menu = Menu(data, user)
-                cont = menu.scroll_loop(stdscr, restaurant_items_loop)
+                cont = tui.scroll_loop(menu, tui.restaurant_items_loop)
         elif c in (ord('f'), ord('F')):
-            menu = filters_menu
-            filters_menu.scroll_loop(stdscr, toggle_item, items=filters)
+            tui.scroll_loop(tui.filters_menu, tui.toggle_item,
+                            items=tui.filters)
             # render_menu(stdscr)
         tui.render_home()
 
