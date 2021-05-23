@@ -74,7 +74,7 @@ class TUI:
         self.filters_menu = Menu(self.filters, user)
 
     def render_home(self):
-        self.stdscr.clear()
+        self.stdscr.erase()
         y, x = self.stdscr.getmaxyx()
         if y < 20 or x < 40:
             raise TerminalTooSmall(x, y)
@@ -153,9 +153,6 @@ class TUI:
             max_x -= orig_x
             chars += char if isinstance(char, str) else chr(char)
             code = ord(char) if isinstance(char, str) else char
-            # chars += str(code)
-            # x += len(str(code))
-            # scroll search bar when char limit reached?
             if len(chars) > 0:
                 # backspace
                 if code == 263 or code == 127 or code == 8:
@@ -167,20 +164,14 @@ class TUI:
                     self.search_text = chars[offset:]
                 elif code == 27:
                     curses.curs_set(0)
-                    self.search_text = chars[:-1]
+                    self.search_text = ""
                     self.render_home()
                     return
-                # elif x == max_:
-                #     chars = chars[offset:-1]
                 elif chars[-1] == "\n":
                     curses.curs_set(0)
-                    # stdscr.clear()
-                    # stdscr.addstr(3, 3, chars[:-1])
-                    # stdscr.getch()
                     self.search_submitted = True
                     self.search_text = chars[:-1]
                     return
-                # escape
                 elif code == 410:  # resize char
                     chars = ""
                     self.search_text = chars
@@ -194,7 +185,6 @@ class TUI:
                         x += 1
                         self.search_text = chars
             self.render_home()
-        self.search_text = chars
 
     def print_help_menu(self):
         render_help_menu()
@@ -202,7 +192,7 @@ class TUI:
             render_help_menu()
 
     def render_help_menu(self):
-        self.stdscr.clear()
+        self.stdscr.erase()
         help_box = curses.newwin(0, 0)
         help_box.box()
         self.stdscr.refresh()
@@ -228,8 +218,8 @@ class TUI:
                 return [dict({"Name": "No restaurants found"})]
             return data["Data"]
         except Exception as e:
-            self.stdscr.clear()
-            self.stdscr.addstr(str(e))
+            self.stdscr.erase()
+            self.stdscr.addstr("Exception: " + str(e) + "\n")
             self.stdscr.addstr(
                 "Couldn't connect to the server, press any key to exit")
             self.stdscr.getch()
@@ -250,7 +240,7 @@ class TUI:
         login_text = "Login"
         sign_in_text = "Register"
         text_list = [pc_text, restaurants_text,
-                     cuisines_text, login_text, sign_in_text]
+                     cuisines_text]  # , login_text, sign_in_text]
         updated = len(text_list) - 1
         while len(" ".join(text_list)) >= max_x - x:
             text_list[updated] = text_list[updated][0] + "..."
@@ -376,7 +366,7 @@ class Menu:
             self.add_items(stdscr, items)
         else:
             self.update_items(stdscr)
-        stdscr.clear()
+        stdscr.erase()
         win_y, win_x = stdscr.getyx()
         main_box = curses.newwin(win_y, win_x)
         main_box.box()
@@ -457,7 +447,7 @@ def get_restaurant_names(data):
 
 def render_menu(stdscr):
     # TODO handle errors
-    stdscr.clear()
+    stdscr.erase()
     y, x = stdscr.getyx()
     if data["Status"] == 200:
         dat = data["Data"]
@@ -490,7 +480,7 @@ def render_menu(stdscr):
 
 
 def display_restaurant_info(stdscr, restaurant):
-    stdscr.clear()
+    stdscr.erase()
     # Clean up URL
     try:
         restaurant["URL"] = re.match(
@@ -557,7 +547,7 @@ def display_restaurant_info(stdscr, restaurant):
 
 
 def display_restaurants(stdscr, restaurants, y, x, user_y, offset):
-    stdscr.clear()
+    stdscr.erase()
     win_y, win_x = stdscr.getyx()
     main_box = curses.newwin(win_y, win_x)
     main_box.box()
@@ -589,7 +579,7 @@ def display_restaurants(stdscr, restaurants, y, x, user_y, offset):
 
 
 def main(stdscr):
-    stdscr.clear()
+    stdscr.erase()
     curses.curs_set(0)  # Turn off cursor blinking
     curses.start_color()
     curses.use_default_colors()
