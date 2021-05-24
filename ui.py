@@ -72,6 +72,7 @@ class TUI:
         self.cuisines_menu = Menu(cuisines_param, user)
         self.prices_menu = Menu(price_param, user)
         self.filters_menu = Menu(self.filters, user)
+        self.filters_menu_on = False
 
     def render_home(self):
         self.stdscr.erase()
@@ -112,10 +113,14 @@ class TUI:
                                   search_box_x, search_string + self.search_text)
 
     def scroll_loop(self, menu, action, items=[]):
+        if menu == self.filters_menu:
+            self.filters_menu_on = True
         if len(items) == 0:
             items = get_restaurant_names(menu.data)
-        menu.render_menu(self.stdscr, items)
-        while (c := self.stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
+        self.stdscr.erase()
+        win = curses.newwin(0, 0)
+        menu.render_menu(win, items)
+        while (c := win.getch()) != 27 and c not in (ord('q'), ord('Q')):
             win_max_y, _ = self.stdscr.getmaxyx()
             # max_y = number_of_restaurants - orig_y + 1
             max_y = len(items) + menu.y - 1
@@ -123,6 +128,8 @@ class TUI:
                 if menu.current_y == win_max_y - 2 or menu.current_y == max_y:
                     if menu.offset + menu.current_y < max_y:
                         menu.offset += 1
+                    else:
+                        continue
                 else:
                     menu.current_y += 1
             elif c in (ord('k'), ord('K')):
@@ -130,17 +137,23 @@ class TUI:
                     menu.current_y -= 1
                 elif menu.offset > 0:
                     menu.offset -= 1
+                else:
+                    continue
             elif c in (10, ord('o'), ord('O')):
                 if action is not None:
                     action(menu)
             elif c in (ord('f'), ord('F')):
-                self.scroll_loop(self.filters_menu,
-                                 self.toggle_item, items=self.filters)
+                if not self.filters_menu_on:
+                    self.scroll_loop(self.filters_menu,
+                                     self.toggle_item, items=self.filters)
             elif c in (ord('r'), ord('R')):
-                return True
+                if menu != self.filters_menu:
+                    return True
             elif c == ord('?'):
                 print_help_menu()
-            menu.render_menu(self.stdscr, items)
+            menu.render_menu(win, items)
+        if menu == self.filters_menu:
+            self.filters_menu_on = False
 
     def get_user_input(self, y, x):
         chars = "" if self.search_text is None else self.search_text
@@ -172,7 +185,7 @@ class TUI:
                     self.search_submitted = True
                     self.search_text = chars[:-1]
                     return
-                elif code == 410:  # resize char
+                elif code == curses.KEY_RESIZE:
                     chars = ""
                     self.search_text = chars
                     x = orig_x
@@ -297,18 +310,18 @@ class TUI:
         param_value = string_to_param(item.string_content)
         if item.toggle_highlighted:
             if item.string_content in and_params:
-                menu.user.and_filters.append(param_value + "=true")
+                self.user.and_filters.append(param_value + "=true")
             elif item.string_content in cuisines_param:
-                menu.user.cuisines.append(param_value)
+                self.user.cuisines.append(param_value)
             elif item.string_content in price_param:
-                menu.user.prices.append(param_value)
+                self.user.prices.append(param_value)
         else:
             if item.string_content in and_params:
                 menu.user.and_filters.remove(param_value + "=true")
-            elif item.string_content in cuisines:
-                menu.user.cuisines.remove(param_value)
-            elif item.string_content in prices:
-                menu.user.prices.remove(param_value)
+            elif item.string_content in cuisines_param:
+                self.user.cuisines.remove(param_value)
+            elif item.string_content in price_param:
+                self.user.prices.remove(param_value)
 
 
 class TerminalTooSmall(Exception):
@@ -360,19 +373,14 @@ class Menu:
             item.highlighted = True if y == self.current_y + self.offset else False
             y += 1
 
-    def render_menu(self, stdscr, items):
+    def render_menu(self, win, items):
         if len(self.menu_items) == 0:
             self.menu_items = []
-            self.add_items(stdscr, items)
+            self.add_items(win, items)
         else:
-            self.update_items(stdscr)
-        stdscr.erase()
-        win_y, win_x = stdscr.getyx()
-        main_box = curses.newwin(win_y, win_x)
-        main_box.box()
-        stdscr.refresh()
-        main_box.refresh()
-        max_y, max_x = stdscr.getmaxyx()
+            self.update_items(win)
+        win.erase()
+        max_y, max_x = win.getmaxyx()
         max_y -= 1
         y = self.y
         menu_items = self.menu_items[self.offset:]
@@ -381,20 +389,22 @@ class Menu:
                 break
             item.update_max(max_x)
             if item.toggle_highlighted and item.highlighted:
-                stdscr.attron(curses.color_pair(2))
-                stdscr.addstr(y, item.x, item.string_content)
-                stdscr.attroff(curses.color_pair(2))
+                win.attron(curses.color_pair(2))
+                win.addstr(y, item.x, item.string_content)
+                wiwin.attroff(curses.color_pair(2))
             elif item.toggle_highlighted:
-                stdscr.attron(curses.color_pair(3))
-                stdscr.addstr(y, item.x, item.string_content)
-                stdscr.attroff(curses.color_pair(3))
+                win.attron(curses.color_pair(3))
+                win.addstr(y, item.x, item.string_content)
+                win.attroff(curses.color_pair(3))
             elif item.highlighted:
-                stdscr.addstr(y, item.x, item.string_content,
-                              curses.A_STANDOUT)
+                win.addstr(y, item.x, item.string_content,
+                           curses.A_STANDOUT)
             else:
-                stdscr.addstr(y, item.x, item.string_content)
+                win.addstr(y, item.x, item.string_content)
             y += 1
-        stdscr.refresh()
+
+        win.box()
+        win.refresh()
 
     def get_currently_selected(self):
         for i, item in enumerate(self.menu_items):
@@ -443,40 +453,6 @@ def get_restaurant_info(restaurant):
 
 def get_restaurant_names(data):
     return [restaurant["Name"] for restaurant in data]
-
-
-def render_menu(stdscr):
-    # TODO handle errors
-    stdscr.erase()
-    y, x = stdscr.getyx()
-    if data["Status"] == 200:
-        dat = data["Data"]
-        orig_y = y + 1
-    else:
-        stdscr.addstr(y + 1, x, "Couldn't fetch restaurants")
-        return
-    user_y = orig_y
-    offset = 0
-    number_of_restaurants = display_restaurants(
-        stdscr, dat, orig_y, x, user_y, offset)
-    while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
-        max_y, max_x = stdscr.getmaxyx()
-        max_y = number_of_restaurants - orig_y + 1
-        if c in (ord('j'), ord('J')):
-            if user_y + offset < max_y:
-                win_y, win_x = stdscr.getmaxyx()
-                if user_y == win_y - 2:
-                    offset += 1
-                else:
-                    user_y += 1
-        elif c in (ord('k'), ord('K')):
-            if user_y > orig_y:
-                user_y -= 1
-            elif offset > 0:
-                offset -= 1
-        elif c in (10, ord('o'), ord('O')):
-            display_restaurant_info(stdscr, dat[user_y - orig_y])
-        display_restaurants(stdscr, dat, orig_y, x, user_y, offset)
 
 
 def display_restaurant_info(stdscr, restaurant):
@@ -571,7 +547,6 @@ def display_restaurants(stdscr, restaurants, y, x, user_y, offset):
         else:
             stdscr.addstr(y, x, restaurant["Name"])
         y += 1
-    stdscr.refresh()
     return number_of_restaurants
 
 
@@ -630,10 +605,10 @@ def main(stdscr):
         elif c in (ord('f'), ord('F')):
             tui.scroll_loop(tui.filters_menu, tui.toggle_item,
                             items=tui.filters)
-            # render_menu(stdscr)
         tui.render_home()
 
 
+# TODO: Render everything in specific boxes
 # TODO: Add status line
 if __name__ == "__main__":
     os.environ.setdefault('ESCDELAY', '25')
