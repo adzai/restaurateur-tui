@@ -64,6 +64,8 @@ class User:
 class TUI:
     def __init__(self, stdscr, user):
         self.stdscr = stdscr
+        self.nav_bar = None
+        self.search_box = None
         self.search_name = "name"
         self.user = user
         self.search_text = None
@@ -74,43 +76,56 @@ class TUI:
         self.filters_menu = Menu(self.filters, user)
         self.filters_menu_on = False
 
-    def render_home(self):
-        self.stdscr.erase()
+    def render_home(self, render_all=False):
         y, x = self.stdscr.getmaxyx()
-        if y < 20 or x < 40:
-            raise TerminalTooSmall(x, y)
-        elif y > 20 and x > 60:
-            self.stdscr.addstr(logo_big)
-        else:
-            self.stdscr.addstr(1, 0, logo_small)
-        nav_bar_y = int(y*0.25)
-        nav_bar_x = 5
+        if render_all:
+            self.stdscr.erase()
+            if y < 20 or x < 40:
+                raise TerminalTooSmall(x, y)
+            elif y > 20 and x > 60:
+                self.stdscr.addstr(logo_big)
+            else:
+                self.stdscr.addstr(1, 0, logo_small)
+            nav_bar_y = int(y*0.25)
+            nav_bar_x = 5
+            search_box_y = int(y*0.9)
+            search_box_x = 5
+            main_box_y = int(y*0.4)
+            main_box_x = 5
+            main_box_max_x = x-10
+            nav_bar_max_x = x-10
+            self.nav_bar = curses.newwin(
+                3, nav_bar_max_x, nav_bar_y, nav_bar_x)
+            self.nav_bar.box()
+            main_box = curses.newwin(
+                int(y*0.5), main_box_max_x, main_box_y, main_box_x)
+            main_box.box()
+            self.search_box = curses.newwin(
+                3, x-10, search_box_y, search_box_x)
+            self.search_box.box()
+            self.stdscr.refresh()
+            self.nav_bar.refresh()
+            main_box.refresh()
+            self.search_box.refresh()
+            self.search_text = "" if self.search_text is None else self.search_text
+            _, max_x = main_box.getmaxyx()
+            self.print_help_string(main_box_y, main_box_x,
+                                   main_box_max_x - main_box_x)
+            self.print_nav_bar_items()
+            search_string = "Search " + self.search_name + ": "
+            self.print_keyword_string(1, self.search_box,
+                                      search_string + self.search_text)
+            return
         search_box_y = int(y*0.9)
         search_box_x = 5
-        main_box_y = int(y*0.4)
-        main_box_x = 5
-        main_box_max_x = x-10
-        nav_bar_max_x = x-10
-        nav_bar = curses.newwin(3, nav_bar_max_x, nav_bar_y, nav_bar_x)
-        nav_bar.box()
-        main_box = curses.newwin(
-            int(y*0.5), main_box_max_x, main_box_y, main_box_x)
-        main_box.box()
-        search_box = curses.newwin(3, x-10, search_box_y, search_box_x)
-        search_box.box()
-        self.stdscr.refresh()
-        nav_bar.refresh()
-        main_box.refresh()
-        search_box.refresh()
+        self.search_box = curses.newwin(3, x-10, search_box_y, search_box_x)
+        self.search_box.box()
+        self.search_box.refresh()
         self.search_text = "" if self.search_text is None else self.search_text
-        _, max_x = main_box.getmaxyx()
-        self.print_help_string(main_box_y, main_box_x,
-                               main_box_max_x - main_box_x)
-        self.print_nav_bar_items(
-            nav_bar_y, nav_bar_x, nav_bar_max_x)
+        _, max_x = self.search_box.getmaxyx()
         search_string = "Search " + self.search_name + ": "
-        self.print_keyword_string(search_box_y,
-                                  search_box_x, search_string + self.search_text)
+        self.print_keyword_string(1, self.search_box,
+                                  search_string + self.search_text)
 
     def scroll_loop(self, menu, action, items=[]):
         if menu == self.filters_menu:
@@ -155,17 +170,20 @@ class TUI:
         if menu == self.filters_menu:
             self.filters_menu_on = False
 
-    def get_user_input(self, y, x):
+    def get_user_input(self):
         chars = "" if self.search_text is None else self.search_text
-        orig_x = x if chars == "" else x - len(chars)
+        orig_x = len("Search " + self.search_name + ": ") + 1 + len(chars)
+        x = orig_x
+        self.search_box.move(1, x)
         curses.curs_set(1)
         offset = 0
         while True:
-            char = self.stdscr.get_wch()
-            _, max_x = self.stdscr.getmaxyx()
-            max_x -= orig_x
+            char = self.search_box.get_wch()
+            _, max_x = self.search_box.getmaxyx()
+            max_x -= 3
             chars += char if isinstance(char, str) else chr(char)
             code = ord(char) if isinstance(char, str) else char
+            resized = False
             if len(chars) > 0:
                 # backspace
                 if code == 263 or code == 127 or code == 8:
@@ -190,6 +208,7 @@ class TUI:
                     self.search_text = chars
                     x = orig_x
                     offset = 0
+                    resized = True
                 elif isinstance(char, str):
                     if x > max_x:
                         offset += 1
@@ -197,7 +216,7 @@ class TUI:
                     else:
                         x += 1
                         self.search_text = chars
-            self.render_home()
+            self.render_home(render_all=resized)
 
     def print_help_menu(self):
         render_help_menu()
@@ -238,14 +257,16 @@ class TUI:
             self.stdscr.getch()
             sys.exit(1)
 
-    def print_keyword_string(self, y, x, string):
-        self.stdscr.addch(y + 1, x + 1, string[0], curses.color_pair(1) +
-                          curses.A_UNDERLINE)
-        self.stdscr.addstr(y + 1, x + 2, string[1:])
+    def print_keyword_string(self, x, box, string):
+        box.addstr(1, x, string[0], curses.color_pair(1) +
+                   curses.A_UNDERLINE)
+        box.addstr(1, x + 1, string[1:])
+        box.refresh()
 
-    def print_nav_bar_items(self, y, x, max_x):
-        max_len = max_x
-        x += 3
+    def print_nav_bar_items(self):
+        max_y, max_x = self.nav_bar.getmaxyx()
+        max_len = max_x - 1
+        x = 1
         space = max_len - x
         pc_text = "Prague College"
         restaurants_text = "All restaurants"
@@ -264,7 +285,7 @@ class TUI:
         space_total = space - total_len
         gap = space_total // (len(text_list) - 1)
         for text in text_list:
-            self.print_keyword_string(y, x, text)
+            self.print_keyword_string(x, self.nav_bar, text)
             x += len(text) + gap
 
     def print_help_string(self, y, x, max_x):
@@ -391,7 +412,7 @@ class Menu:
             if item.toggle_highlighted and item.highlighted:
                 win.attron(curses.color_pair(2))
                 win.addstr(y, item.x, item.string_content)
-                wiwin.attroff(curses.color_pair(2))
+                win.attroff(curses.color_pair(2))
             elif item.toggle_highlighted:
                 win.attron(curses.color_pair(3))
                 win.addstr(y, item.x, item.string_content)
@@ -563,14 +584,13 @@ def main(stdscr):
     curses.init_pair(3, curses.COLOR_RED, -1)
     user = User()
     tui = TUI(stdscr, user)
-    tui.render_home()
+    tui.render_home(render_all=True)
     while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
+        resized = False
         if c in (ord('s'), ord('S')):
             tui.search_name = "name" if tui.search_name == "address" else "address"
         if c in (ord('i'), ord('I')):
-            y, x = tui.stdscr.getyx()
-            tui.stdscr.move(y, x)
-            tui.get_user_input(y, x)
+            tui.get_user_input()
             if tui.search_submitted:
                 # process input
                 user.search_param = "search-" + tui.search_name + "=" + tui.search_text
@@ -583,10 +603,10 @@ def main(stdscr):
                 tui.search_submitted = False
                 tui.search_text = None
                 user.search_param = None
-                tui.render_home()
+            resized = True
         elif c == ord('?'):
             tui.print_help_menu()
-            tui.render_home()
+            resized = True
         elif c in (ord('p'), ord('P')):
             user.current_path = "prague-college/restaurants"
             cont = True
@@ -594,7 +614,7 @@ def main(stdscr):
                 data = tui.get_data(tui.user)
                 menu = Menu(data, user)
                 cont = tui.scroll_loop(menu, tui.restaurant_items_loop)
-            # render_menu(stdscr)
+            resized = True
         elif c in (ord('a'), ord('A')):
             user.current_path = "restaurants"
             cont = True
@@ -602,10 +622,14 @@ def main(stdscr):
                 data = tui.get_data(tui.user)
                 menu = Menu(data, user)
                 cont = tui.scroll_loop(menu, tui.restaurant_items_loop)
+            resized = True
         elif c in (ord('f'), ord('F')):
             tui.scroll_loop(tui.filters_menu, tui.toggle_item,
                             items=tui.filters)
-        tui.render_home()
+            resized = True
+        elif c == curses.KEY_RESIZE:
+            resized = True
+        tui.render_home(render_all=resized)
 
 
 # TODO: Render everything in specific boxes
