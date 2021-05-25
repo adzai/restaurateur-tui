@@ -163,12 +163,10 @@ class TUI:
             items = get_restaurant_names(menu.data)
         self.stdscr.erase()
         self.render_status_line()
-        max_y, max_x = self.stdscr.getmaxyx()
-        win = curses.newwin(max_y - 1, max_x - 1)
-        win.keypad(True)
-        menu.render_menu(win, items)
-        while (c := win.getch()) != 27 and c not in (ord('q'), ord('Q')):
-            win_max_y, max_x = win.getmaxyx()
+        menu.render_menu(self.stdscr, items)
+        # Making window bigger doesn't resize
+        while (c := menu.window.getch()) != 27 and c not in (ord('q'), ord('Q')):
+            win_max_y, max_x = menu.window.getmaxyx()
             # max_y = number_of_restaurants - orig_y + 1
             max_y = len(items) + menu.y - 1
             if c in (ord('j'), ord('J'), curses.KEY_DOWN):
@@ -198,7 +196,11 @@ class TUI:
                     return True
             elif c == ord('?'):
                 self.print_help_menu()
-            menu.render_menu(win, items)
+            elif c == curses.KEY_RESIZE:
+                self.stdscr.erase()
+                self.stdscr.refresh()
+
+            menu.render_menu(self.stdscr, items)
         if menu == self.filters_menu:
             self.filters_menu_on = False
 
@@ -271,13 +273,13 @@ class TUI:
         self.help_box.addstr(2, 1, "I, i: Enters insert status")
         self.help_box.addstr(
             3, 1, "P, p: Displays restaurants around Prague college")
-        self.help_box.addstr(4, 1, "S, s: Toggles between search name/address")
-        self.help_box.addstr(5, 1, "R, r: Displays register page")
-        self.help_box.addstr(6, 1, "L, l: Displays login page")
         self.help_box.addstr(
-            7, 1, "F, f: Displays filter page menu to search based on filters")
+            4, 1, "A, a: Displays all restaurants in Prague")
+        self.help_box.addstr(5, 1, "S, s: Toggles between search name/address")
         self.help_box.addstr(
-            8, 1, "R, r: Refreshes restaurants page")
+            6, 1, "F, f: Displays filter page menu to search based on filters")
+        self.help_box.addstr(
+            7, 1, "R, r: Refreshes restaurants page")
         self.help_box.refresh()
 
     def get_data(self, user):
@@ -362,10 +364,52 @@ class TUI:
         new_items = get_restaurant_info(
             menu.get_currently_selected())
         new_menu = Menu(new_items, self.user)
-        self.scroll_loop(new_menu, None, items=new_items)
+        self.scroll_loop(new_menu, self.display_truncated, items=new_items)
+
+    def display_truncated(self, menu):
+        item, pos = menu.get_currently_selected_item()
+        if item.string_content[:-4:-1] == "...":
+            # Do something when string
+            # Do something when list
+            # Do something when dict
+            key = item.string_content.split(":")[0]
+            values = menu.data[pos].replace(key + ": ", "")  # [key]
+            items = []
+            _, max_x = self.stdscr.getmaxyx()
+            max_x -= 6
+            try:
+                d = json.loads(values)
+                # TODO function wrap_text
+                for k, v in d.items():
+                    x = 0
+                    items.append(str(k))
+                    chars = ""
+                    for char in str(v):
+                        if x == max_x:
+                            items.append(chars)
+                            chars = ""
+                            x = 0
+                        chars += char
+                        x += 1
+                    items.append(chars)
+                    items.append("")
+                items = items[:-1]
+            except:
+                x = 0
+                chars = ""
+                for char in str(values):
+                    if x == max_x:
+                        items.append(chars)
+                        chars = ""
+                        x = 0
+                    chars += char
+                    x += 1
+                items.append(chars)
+            new_menu = Menu(items, self.user)
+            self.scroll_loop(new_menu, None, items=items)  # Use menu.data?
 
     def toggle_item(self, menu):
-        item = menu.get_currently_selected_item()
+        item, _ = menu.get_currently_selected_item()
         if item.string_content == "Cuisines":
             self.scroll_loop(self.cuisines_menu, self.toggle_item,
                              items=cuisines_param)
@@ -401,10 +445,10 @@ class TerminalTooSmall(Exception):
 
 
 class MenuItem:
-    def __init__(self, x, y, string_content, highlighted=False):
+    def __init__(self, x, y, content, highlighted=False):
         self.x = x
         self.y = y
-        self.string_content = string_content
+        self.string_content = content
         self.highlighted = highlighted
         self.toggle_highlighted = False
         self.max_x = 0
@@ -426,31 +470,35 @@ class Menu:
         self.menu_items = []
         self.offset = 0
         self.user = user
+        self.window = None
 
-    def add_items(self, stdscr, items):
-        max_x, max_y = stdscr.getmaxyx()
+    def add_items(self, items):
+        max_x, max_y = self.window.getmaxyx()
         y = self.y
         for item in items:
             highlighted = True if y == self.current_y + self.offset else False
             self.menu_items.append(MenuItem(self.x, y, item, highlighted))
             y += 1
 
-    def update_items(self, stdscr):
-        max_x, max_y = stdscr.getmaxyx()
+    def update_items(self):
+        max_x, max_y = self.window.getmaxyx()
         y = self.y
         for item in self.menu_items:
             item.highlighted = True if y == self.current_y + \
                 self.offset else False
             y += 1
 
-    def render_menu(self, win, items):
+    def render_menu(self, stdscr, items):
+        max_y, max_x = stdscr.getmaxyx()
+        self.window = curses.newwin(max_y - 1, max_x - 1)
+        self.window.keypad(True)
         if len(self.menu_items) == 0:
             self.menu_items = []
-            self.add_items(win, items)
+            self.add_items(items)
         else:
-            self.update_items(win)
-        win.erase()
-        max_y, max_x = win.getmaxyx()
+            self.update_items()
+        self.window.erase()
+        max_y, max_x = self.window.getmaxyx()
         max_y -= 1
         y = self.y
         menu_items = self.menu_items[self.offset:]
@@ -459,22 +507,22 @@ class Menu:
                 break
             item.update_max(max_x)
             if item.toggle_highlighted and item.highlighted:
-                win.attron(curses.color_pair(2))
-                win.addstr(y, item.x, item.string_content)
-                win.attroff(curses.color_pair(2))
+                self.window.attron(curses.color_pair(2))
+                self.window.addstr(y, item.x, item.string_content)
+                self.window.attroff(curses.color_pair(2))
             elif item.toggle_highlighted:
-                win.attron(curses.color_pair(3))
-                win.addstr(y, item.x, item.string_content)
-                win.attroff(curses.color_pair(3))
+                self.window.attron(curses.color_pair(3))
+                self.window.addstr(y, item.x, item.string_content)
+                self.window.attroff(curses.color_pair(3))
             elif item.highlighted:
-                win.addstr(y, item.x, item.string_content,
-                           curses.A_STANDOUT)
+                self.window.addstr(y, item.x, item.string_content,
+                                   curses.A_STANDOUT)
             else:
-                win.addstr(y, item.x, item.string_content)
+                self.window.addstr(y, item.x, item.string_content)
             y += 1
 
-        win.box()
-        win.refresh()
+        self.window.box()
+        self.window.refresh()
 
     def get_currently_selected(self):
         for i, item in enumerate(self.menu_items):
@@ -484,7 +532,7 @@ class Menu:
     def get_currently_selected_item(self):
         for i, item in enumerate(self.menu_items):
             if item.y == self.current_y + self.offset:
-                return item
+                return item, i
 
 
 def string_to_param(string):
