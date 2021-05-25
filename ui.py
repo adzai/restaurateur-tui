@@ -37,8 +37,6 @@ cuisines_param = ["Czech", "International", "Italian", "English", "American",
                   "Brazil", "Russian", "Chinese", "Greek", "Arabic", "Korean"]
 
 
-# TODO: add some vim key bindings
-
 class User:
     def __init__(self):
         self.and_filters = []
@@ -79,11 +77,12 @@ class TUI:
         self.search_text = None
         self.search_submitted = False
         self.filters = and_params + ["Cuisines", "Prices"]
-        self.cuisines_menu = Menu(cuisines_param, user)
-        self.prices_menu = Menu(price_param, user)
-        self.filters_menu = Menu(self.filters, user)
+        self.cuisines_menu = Menu("Cuisines", cuisines_param, user)
+        self.prices_menu = Menu("Prices", price_param, user)
+        self.filters_menu = Menu("Filters", self.filters, user)
         self.filters_menu_on = False
-        self.status = "Normal mode"
+        self.status = "Main menu"
+        self.displaying_error = False
         self.home_max_x = None
         self.home_max_y = None
 
@@ -137,9 +136,16 @@ class TUI:
         self.home_y, self.home_x = self.stdscr.getmaxyx()
         if render_all:
             self.stdscr.erase()
-            if self.home_y < 12 or self.home_x < 30:
-                raise TerminalTooSmall(self.home_x, self.home_y)
-            elif self.home_y < 15 or self.home_x < 40:
+            original_status = self.status
+            while self.home_y < 12 or self.home_x < 30:
+                self.status = "Terminal too small"
+                self.stdscr.erase()
+                self.stdscr.refresh()
+                self.render_status_line()
+                self.stdscr.getch()
+                self.home_y, self.home_x = self.stdscr.getmaxyx()
+            self.status = original_status
+            if self.home_y < 15 or self.home_x < 40:
                 self.stdscr.addstr("Restaurateur TUI")
             elif self.home_y > 30 and self.home_x > 65:
                 self.stdscr.addstr(logo_big)
@@ -155,8 +161,8 @@ class TUI:
 
     def render_status_line(self):
         max_y, _ = self.stdscr.getmaxyx()
-        self.status_box = curses.newwin(3, 20, max_y - 1, 1)
-        self.status_box.addstr("Status: " + self.status)
+        self.status_box = curses.newwin(3, 30, max_y - 1, 1)
+        self.status_box.addstr(self.status)
         self.status_box.refresh()
 
     def scroll_loop(self, menu, action, items=[]):
@@ -166,7 +172,9 @@ class TUI:
             items = get_restaurant_names(menu.data)
         self.stdscr.erase()
         self.render_status_line()
-        menu.render_menu(self.stdscr, items)
+        original_status = menu.name
+        self.status = original_status
+        menu.render_menu(self.stdscr, items, self.render_status_line)
         # Making window bigger doesn't resize
         while (c := menu.window.getch()) != 27 and c not in (ord('q'), ord('Q')):
             win_max_y, max_x = menu.window.getmaxyx()
@@ -203,7 +211,8 @@ class TUI:
                 self.stdscr.erase()
                 self.stdscr.refresh()
 
-            menu.render_menu(self.stdscr, items)
+            self.status = original_status
+            menu.render_menu(self.stdscr, items, self.render_status_line)
         if menu == self.filters_menu:
             self.filters_menu_on = False
 
@@ -256,6 +265,8 @@ class TUI:
 
             curses.curs_set(0)  # Prevent cursor flashing on re-render
             self.render_home(render_all=resized)
+            if resized:
+                self.search_box.move(1, x)
             curses.curs_set(1)
 
     def print_help_menu(self):
@@ -294,15 +305,12 @@ class TUI:
             data = json.loads(r.text)
             if data["Data"] is None:
                 return [dict({"Name": "No restaurants found"})]
-            self.status = "Normal mode"
             return data["Data"]
         except Exception as e:
             self.stdscr.erase()
             self.stdscr.addstr("Exception: " + str(e) + "\n")
-            self.stdscr.addstr(
-                "Couldn't connect to the server, press any key to exit")
-            self.stdscr.getch()
-            sys.exit(1)
+            self.status = "Couldn't connect to the server"
+            self.displaying_error = True
 
     def print_keyword_string(self, x, box, string):
         box.addstr(1, x, string[0], curses.color_pair(1) +
@@ -366,7 +374,7 @@ class TUI:
     def restaurant_items_loop(self, menu):
         new_items = get_restaurant_info(
             menu.get_currently_selected())
-        new_menu = Menu(new_items, self.user)
+        new_menu = Menu("Restaurant info", new_items, self.user)
         self.scroll_loop(new_menu, self.display_truncated, items=new_items)
 
     def display_truncated(self, menu):
@@ -408,7 +416,7 @@ class TUI:
                     chars += char
                     x += 1
                 items.append(chars)
-            new_menu = Menu(items, self.user)
+            new_menu = Menu("Item info", items, self.user)
             self.scroll_loop(new_menu, None, items=items)  # Use menu.data?
 
     def toggle_item(self, menu):
@@ -439,14 +447,6 @@ class TUI:
                 self.user.prices.remove(param_value)
 
 
-class TerminalTooSmall(Exception):
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
-        self.message = f"Terminal too small! (x: {self.x}, y: {self.y})"
-        super().__init__(self.message)
-
-
 class MenuItem:
     def __init__(self, x, y, content, highlighted=False):
         self.x = x
@@ -464,8 +464,8 @@ class MenuItem:
 
 
 class Menu:
-    def __init__(self, data, user, filters_menu=None):
-        # TODO: add these as constants for windows and use everywhere
+    def __init__(self, name, data, user, filters_menu=None):
+        self.name = name
         self.x = 2
         self.y = 1
         self.data = data
@@ -491,7 +491,7 @@ class Menu:
                 self.offset else False
             y += 1
 
-    def render_menu(self, stdscr, items):
+    def render_menu(self, stdscr, items, render_status_line):
         max_y, max_x = stdscr.getmaxyx()
         self.window = curses.newwin(max_y - 1, max_x - 1)
         self.window.keypad(True)
@@ -525,6 +525,7 @@ class Menu:
             y += 1
 
         self.window.box()
+        render_status_line()
         self.window.refresh()
 
     def get_currently_selected(self):
@@ -597,14 +598,15 @@ def main(stdscr):
             tui.render_status_line()
             tui.get_user_input()
             if tui.search_submitted:
-                # process input
                 user.prague_college = False
                 user.search_param = "search-" + tui.search_name + \
                     "=" + tui.search_text
                 cont = True
                 while cont:
                     data = tui.get_data(tui.user)
-                    menu = Menu(data, user)
+                    if data is None:
+                        break
+                    menu = Menu("Restaurants", data, user)
                     cont = tui.scroll_loop(menu, tui.restaurant_items_loop)
                 tui.search_submitted = False
                 tui.search_text = None
@@ -618,7 +620,9 @@ def main(stdscr):
             cont = True
             while cont:
                 data = tui.get_data(tui.user)
-                menu = Menu(data, user)
+                if data is None:
+                    break
+                menu = Menu("Prague college restaurants", data, user)
                 cont = tui.scroll_loop(menu, tui.restaurant_items_loop)
             re_render = True
         elif c in (ord('a'), ord('A')):
@@ -626,7 +630,9 @@ def main(stdscr):
             cont = True
             while cont:
                 data = tui.get_data(tui.user)
-                menu = Menu(data, user)
+                if data is None:
+                    break
+                menu = Menu("Restaurants", data, user)
                 cont = tui.scroll_loop(menu, tui.restaurant_items_loop)
             re_render = True
         elif c in (ord('f'), ord('F')):
@@ -635,11 +641,16 @@ def main(stdscr):
             re_render = True
         elif c == curses.KEY_RESIZE:
             re_render = True
-        tui.status = "Normal mode"
+        if tui.displaying_error:
+            tui.displaying_error = False
+        else:
+            tui.status = "Main menu"
         tui.render_home(render_all=re_render)
 
 
-# TODO: Handle truncating of text in menus
+# TODO: adjust data from JSON to be more relevant
+# TODO: Handle truncating of text in menus or r for reload
+# TODO: add some vim key bindings
 if __name__ == "__main__":
     os.environ.setdefault('ESCDELAY', '25')
     curses.wrapper(main)
