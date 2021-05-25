@@ -41,16 +41,19 @@ cuisines_param = ["Czech", "International", "Italian", "English", "American",
 
 class User:
     def __init__(self):
-        self.current_path = ""
         self.and_filters = []
         self.search_param = None
         self.cuisines = []
         self.prices = []
+        self.prague_college = False
 
     def format_request_url(self):
         all_filters = []
-        url = BASE_URL + "/" + self.current_path + "?"
-        if self.current_path == "restaurants":
+        url = BASE_URL + "/restaurants?"
+        if self.prague_college:
+            all_filters.append("lat=50.0785714")
+            all_filters.append("lon=14.4400922")
+        else:
             all_filters.append("radius=ignore")
         if self.search_param is not None:
             all_filters.append(self.search_param)
@@ -595,9 +598,9 @@ def main(stdscr):
             tui.get_user_input()
             if tui.search_submitted:
                 # process input
+                user.prague_college = False
                 user.search_param = "search-" + tui.search_name + \
                     "=" + tui.search_text
-                user.current_path = "restaurants"
                 cont = True
                 while cont:
                     data = tui.get_data(tui.user)
@@ -611,7 +614,7 @@ def main(stdscr):
             tui.print_help_menu()
             re_render = True
         elif c in (ord('p'), ord('P')):
-            user.current_path = "prague-college/restaurants"
+            user.prague_college = True
             cont = True
             while cont:
                 data = tui.get_data(tui.user)
@@ -619,7 +622,7 @@ def main(stdscr):
                 cont = tui.scroll_loop(menu, tui.restaurant_items_loop)
             re_render = True
         elif c in (ord('a'), ord('A')):
-            user.current_path = "restaurants"
+            user.prague_college = False
             cont = True
             while cont:
                 data = tui.get_data(tui.user)
@@ -636,7 +639,7 @@ def main(stdscr):
         tui.render_home(render_all=re_render)
 
 
-# TODO: Add status line
+# TODO: Handle truncating of text in menus
 if __name__ == "__main__":
     os.environ.setdefault('ESCDELAY', '25')
     curses.wrapper(main)
