@@ -31,8 +31,10 @@ BASE_URL = args.host if args.host else "https://api.restaurateur.tech"
 
 and_params = ["Vegetarian", "Vegan", "Gluten free", "Takeaway", "Has menu"]
 price_param = ["0-300", "300-600", "600-"]
-cuisines_param = ["Czech", "International", "Italian", "English", "American", "Asian", "Indian", "Japanese", "Vietnamese",
-                  "Spanish", "Mediterranean", "French", "Thai", "Balkan", "Brazil", "Russian", "Chinese", "Greek", "Arabic", "Korean"]
+cuisines_param = ["Czech", "International", "Italian", "English", "American",
+                  "Asian", "Indian", "Japanese", "Vietnamese",
+                  "Spanish", "Mediterranean", "French", "Thai", "Balkan",
+                  "Brazil", "Russian", "Chinese", "Greek", "Arabic", "Korean"]
 
 
 # TODO: add some vim key bindings
@@ -64,6 +66,7 @@ class User:
 class TUI:
     def __init__(self, stdscr, user):
         self.stdscr = stdscr
+        self.home_main_box = None
         self.nav_bar = None
         self.search_box = None
         self.status_box = None
@@ -78,61 +81,76 @@ class TUI:
         self.filters_menu = Menu(self.filters, user)
         self.filters_menu_on = False
         self.status = "Normal mode"
+        self.home_max_x = None
+        self.home_max_y = None
 
-    def render_home(self, render_all=False):
-        y, x = self.stdscr.getmaxyx()
-        if render_all:
-            self.stdscr.erase()
-            if y < 20 or x < 40:
-                raise TerminalTooSmall(x, y)
-            elif y > 20 and x > 60:
-                self.stdscr.addstr(logo_big)
-            else:
-                self.stdscr.addstr(1, 0, logo_small)
-            nav_bar_y = int(y*0.25)
-            nav_bar_x = 5
-            search_box_y = int(y*0.9)
-            search_box_x = 5
-            main_box_y = int(y*0.4)
-            main_box_x = 5
-            main_box_max_x = x-10
-            nav_bar_max_x = x-10
-            self.nav_bar = curses.newwin(
-                3, nav_bar_max_x, nav_bar_y, nav_bar_x)
-            self.nav_bar.box()
-            main_box = curses.newwin(
-                int(y*0.5), main_box_max_x, main_box_y, main_box_x)
-            main_box.box()
-            self.search_box = curses.newwin(
-                3, x-10, search_box_y, search_box_x)
-            self.search_box.box()
-            self.stdscr.refresh()
-            self.nav_bar.refresh()
-            main_box.refresh()
-            self.search_box.refresh()
-            self.search_text = "" if self.search_text is None else self.search_text
-            _, max_x = main_box.getmaxyx()
-            self.print_help_string(main_box_y, main_box_x,
-                                   main_box_max_x - main_box_x)
-            self.print_nav_bar_items()
-            search_string = "Search " + self.search_name + ": "
-            self.print_keyword_string(1, self.search_box,
-                                      search_string + self.search_text)
-            self.render_mode()
-            return
-        self.render_mode()
-        search_box_y = int(y*0.9)
+    def render_home_main_box(self):
+        home_main_box_x = 5
+        home_main_box_max_x = self.home_x-10
+        if self.home_y > 25:
+            home_main_box_y = int(self.home_y*0.35)
+            self.home_main_box = curses.newwin(
+                int(self.home_y*0.5), home_main_box_max_x, home_main_box_y,
+                home_main_box_x)
+        else:
+            home_main_box_y = int(self.home_y*0.50)
+            self.home_main_box = curses.newwin(
+                max(int(self.home_y*0.20), 3),
+                home_main_box_max_x, home_main_box_y, home_main_box_x)
+        self.home_main_box.box()
+        self.print_help_string()
+        self.home_main_box.refresh()
+
+    def render_search_box(self):
+        if self.home_y > 25:
+            search_box_y = int(self.home_y*0.87)
+        else:
+            search_box_y = int(self.home_y*0.75)
         search_box_x = 5
-        self.search_box = curses.newwin(3, x-10, search_box_y, search_box_x)
+        self.search_box = curses.newwin(
+            3, self.home_x-10, search_box_y, search_box_x)
         self.search_box.box()
         self.search_box.refresh()
         self.search_text = "" if self.search_text is None else self.search_text
-        _, max_x = self.search_box.getmaxyx()
         search_string = "Search " + self.search_name + ": "
         self.print_keyword_string(1, self.search_box,
                                   search_string + self.search_text)
 
-    def render_mode(self):
+    def render_nav_bar(self):
+        if self.home_y > 25:
+            nav_bar_y = int(self.home_y*0.20)
+        else:
+            nav_bar_y = int(self.home_y*0.30)
+        nav_bar_x = 5
+        nav_bar_max_x = self.home_x-10
+        self.nav_bar = curses.newwin(
+            3, nav_bar_max_x, nav_bar_y, nav_bar_x)
+        self.nav_bar.box()
+        self.render_home_main_box()
+        self.nav_bar.refresh()
+        self.print_nav_bar_items()
+
+    def render_home(self, render_all=False):
+        self.home_y, self.home_x = self.stdscr.getmaxyx()
+        if render_all:
+            self.stdscr.erase()
+            if self.home_y < 12 or self.home_x < 30:
+                raise TerminalTooSmall(self.home_x, self.home_y)
+            elif self.home_y < 15 or self.home_x < 40:
+                self.stdscr.addstr("Restaurateur TUI")
+            elif self.home_y > 30 and self.home_x > 65:
+                self.stdscr.addstr(logo_big)
+            else:
+                self.stdscr.addstr(1, 0, logo_small)
+            self.stdscr.refresh()
+            self.render_nav_bar()
+            self.render_search_box()
+            self.render_status_line()
+            return
+        self.render_status_line()
+        self.render_search_box()
+
+    def render_status_line(self):
         max_y, _ = self.stdscr.getmaxyx()
         self.status_box = curses.newwin(3, 20, max_y - 1, 1)
         self.status_box.addstr("Status: " + self.status)
@@ -144,7 +162,7 @@ class TUI:
         if len(items) == 0:
             items = get_restaurant_names(menu.data)
         self.stdscr.erase()
-        self.render_mode()
+        self.render_status_line()
         max_y, max_x = self.stdscr.getmaxyx()
         win = curses.newwin(max_y - 1, max_x - 1)
         win.keypad(True)
@@ -239,11 +257,12 @@ class TUI:
         self.stdscr.erase()
         self.stdscr.refresh()
         self.render_help_menu()
-        while (c := self.stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
+        while (c := self.stdscr.getch()) != 27 and \
+                c not in (ord('q'), ord('Q')):
             self.render_help_menu()
         self.help_box.erase()
         self.help_box.refresh()
-        self.render_mode()
+        self.render_status_line()
 
     def render_help_menu(self):
         self.help_box = curses.newwin(0, 0)
@@ -263,7 +282,7 @@ class TUI:
 
     def get_data(self, user):
         self.status = "Loading"
-        self.render_mode()
+        self.render_status_line()
         try:
             url = user.format_request_url()
             r = requests.get(url)
@@ -294,8 +313,6 @@ class TUI:
         pc_text = "Prague College"
         restaurants_text = "All restaurants"
         cuisines_text = "Filters"
-        login_text = "Login"
-        sign_in_text = "Register"
         text_list = [pc_text, restaurants_text,
                      cuisines_text]  # , login_text, sign_in_text]
         updated = len(text_list) - 1
@@ -311,18 +328,19 @@ class TUI:
             self.print_keyword_string(x, self.nav_bar, text)
             x += len(text) + gap
 
-    def print_help_string(self, y, x, max_x):
+    def print_help_string(self):
         help_text = """Welcome to restaurateur TUI!
         This interface is controlled via keyboard shortcuts. To access specific
         elements you can use the key that is highlighted in yellow and underlined. Access insert status with "I" or "i", exit it with escape.
         If you need help with any of the commands press '?'"""
+        max_y, max_x = self.home_main_box.getmaxyx()
         max_len = max_x - 2
-        x += 2
-        if max_x < 45:
+        x = 1
+        if max_x < 45 or max_y < 12:
             help_text = "Press ? for help"
         count = x
         orig_x = x
-        y += 1
+        y = 1
         for word in help_text.split():
             word += " "
             count += len(word)
@@ -331,8 +349,14 @@ class TUI:
                 x = orig_x
                 count = x
             for char in word:
-                self.stdscr.addch(y, x, char)
+                if x == orig_x and char == " ":
+                    continue
+                self.home_main_box.addch(y, x, char)
                 x += 1
+                if x == max_len:
+                    y += 1
+                    x = orig_x
+                    count = x
 
     def restaurant_items_loop(self, menu):
         new_items = get_restaurant_info(
@@ -388,7 +412,8 @@ class MenuItem:
     def update_max(self, max_x):
         self.max_x = max_x
         self.string_content = self.string_content if self.x + \
-            len(self.string_content) < max_x - 1 else self.string_content[:max_x-self.x-4] + "..."
+            len(self.string_content) < max_x - 1 else \
+            self.string_content[:max_x-self.x-4] + "..."
 
 
 class Menu:
@@ -414,7 +439,8 @@ class Menu:
         max_x, max_y = stdscr.getmaxyx()
         y = self.y
         for item in self.menu_items:
-            item.highlighted = True if y == self.current_y + self.offset else False
+            item.highlighted = True if y == self.current_y + \
+                self.offset else False
             y += 1
 
     def render_menu(self, win, items):
@@ -511,16 +537,18 @@ def main(stdscr):
     tui = TUI(stdscr, user)
     tui.render_home(render_all=True)
     while (c := stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
-        resized = False
+        re_render = False
         if c in (ord('s'), ord('S')):
-            tui.search_name = "name" if tui.search_name == "address" else "address"
+            tui.search_name = "name" if tui.search_name == "address" \
+                else "address"
         if c in (ord('i'), ord('I')):
             tui.status = "Insert mode"
-            tui.render_mode()
+            tui.render_status_line()
             tui.get_user_input()
             if tui.search_submitted:
                 # process input
-                user.search_param = "search-" + tui.search_name + "=" + tui.search_text
+                user.search_param = "search-" + tui.search_name + \
+                    "=" + tui.search_text
                 user.current_path = "restaurants"
                 cont = True
                 while cont:
@@ -530,10 +558,10 @@ def main(stdscr):
                 tui.search_submitted = False
                 tui.search_text = None
                 user.search_param = None
-            resized = True
+            re_render = True
         elif c == ord('?'):
             tui.print_help_menu()
-            resized = True
+            re_render = True
         elif c in (ord('p'), ord('P')):
             user.current_path = "prague-college/restaurants"
             cont = True
@@ -541,7 +569,7 @@ def main(stdscr):
                 data = tui.get_data(tui.user)
                 menu = Menu(data, user)
                 cont = tui.scroll_loop(menu, tui.restaurant_items_loop)
-            resized = True
+            re_render = True
         elif c in (ord('a'), ord('A')):
             user.current_path = "restaurants"
             cont = True
@@ -549,15 +577,15 @@ def main(stdscr):
                 data = tui.get_data(tui.user)
                 menu = Menu(data, user)
                 cont = tui.scroll_loop(menu, tui.restaurant_items_loop)
-            resized = True
+            re_render = True
         elif c in (ord('f'), ord('F')):
             tui.scroll_loop(tui.filters_menu, tui.toggle_item,
                             items=tui.filters)
-            resized = True
+            re_render = True
         elif c == curses.KEY_RESIZE:
-            resized = True
+            re_render = True
         tui.status = "Normal mode"
-        tui.render_home(render_all=resized)
+        tui.render_home(render_all=re_render)
 
 
 # TODO: Add status line
