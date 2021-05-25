@@ -66,6 +66,8 @@ class TUI:
         self.stdscr = stdscr
         self.nav_bar = None
         self.search_box = None
+        self.status_box = None
+        self.help_box = None
         self.search_name = "name"
         self.user = user
         self.search_text = None
@@ -75,6 +77,7 @@ class TUI:
         self.prices_menu = Menu(price_param, user)
         self.filters_menu = Menu(self.filters, user)
         self.filters_menu_on = False
+        self.status = "Normal mode"
 
     def render_home(self, render_all=False):
         y, x = self.stdscr.getmaxyx()
@@ -115,7 +118,9 @@ class TUI:
             search_string = "Search " + self.search_name + ": "
             self.print_keyword_string(1, self.search_box,
                                       search_string + self.search_text)
+            self.render_mode()
             return
+        self.render_mode()
         search_box_y = int(y*0.9)
         search_box_x = 5
         self.search_box = curses.newwin(3, x-10, search_box_y, search_box_x)
@@ -127,19 +132,28 @@ class TUI:
         self.print_keyword_string(1, self.search_box,
                                   search_string + self.search_text)
 
+    def render_mode(self):
+        max_y, _ = self.stdscr.getmaxyx()
+        self.status_box = curses.newwin(3, 20, max_y - 1, 1)
+        self.status_box.addstr("Status: " + self.status)
+        self.status_box.refresh()
+
     def scroll_loop(self, menu, action, items=[]):
         if menu == self.filters_menu:
             self.filters_menu_on = True
         if len(items) == 0:
             items = get_restaurant_names(menu.data)
         self.stdscr.erase()
-        win = curses.newwin(0, 0)
+        self.render_mode()
+        max_y, max_x = self.stdscr.getmaxyx()
+        win = curses.newwin(max_y - 1, max_x - 1)
+        win.keypad(True)
         menu.render_menu(win, items)
         while (c := win.getch()) != 27 and c not in (ord('q'), ord('Q')):
-            win_max_y, _ = self.stdscr.getmaxyx()
+            win_max_y, max_x = win.getmaxyx()
             # max_y = number_of_restaurants - orig_y + 1
             max_y = len(items) + menu.y - 1
-            if c in (ord('j'), ord('J')):
+            if c in (ord('j'), ord('J'), curses.KEY_DOWN):
                 if menu.current_y == win_max_y - 2 or menu.current_y == max_y:
                     if menu.offset + menu.current_y < max_y:
                         menu.offset += 1
@@ -147,7 +161,7 @@ class TUI:
                         continue
                 else:
                     menu.current_y += 1
-            elif c in (ord('k'), ord('K')):
+            elif c in (ord('k'), ord('K'), curses.KEY_UP):
                 if menu.current_y > menu.y:
                     menu.current_y -= 1
                 elif menu.offset > 0:
@@ -165,7 +179,7 @@ class TUI:
                 if menu != self.filters_menu:
                     return True
             elif c == ord('?'):
-                print_help_menu()
+                self.print_help_menu()
             menu.render_menu(win, items)
         if menu == self.filters_menu:
             self.filters_menu_on = False
@@ -216,38 +230,47 @@ class TUI:
                     else:
                         x += 1
                         self.search_text = chars
+
+            curses.curs_set(0)  # Prevent cursor flashing on re-render
             self.render_home(render_all=resized)
+            curses.curs_set(1)
 
     def print_help_menu(self):
-        render_help_menu()
+        self.stdscr.erase()
+        self.stdscr.refresh()
+        self.render_help_menu()
         while (c := self.stdscr.getch()) != 27 and c not in (ord('q'), ord('Q')):
-            render_help_menu()
+            self.render_help_menu()
+        self.help_box.erase()
+        self.help_box.refresh()
+        self.render_mode()
 
     def render_help_menu(self):
-        self.stdscr.erase()
-        help_box = curses.newwin(0, 0)
-        help_box.box()
-        self.stdscr.refresh()
-        help_box.refresh()
-        self.stdscr.addstr(1, 1, "Esc : Exits current mode/window")
-        self.stdscr.addstr(2, 1, "I, i: Enters insert mode")
-        self.stdscr.addstr(
+        self.help_box = curses.newwin(0, 0)
+        self.help_box.box()
+        self.help_box.addstr(1, 1, "Esc : Exits current status/window")
+        self.help_box.addstr(2, 1, "I, i: Enters insert status")
+        self.help_box.addstr(
             3, 1, "P, p: Displays restaurants around Prague college")
-        self.stdscr.addstr(4, 1, "S, s: Toggles between search name/address")
-        self.stdscr.addstr(5, 1, "R, r: Displays register page")
-        self.stdscr.addstr(6, 1, "L, l: Displays login page")
-        self.stdscr.addstr(
+        self.help_box.addstr(4, 1, "S, s: Toggles between search name/address")
+        self.help_box.addstr(5, 1, "R, r: Displays register page")
+        self.help_box.addstr(6, 1, "L, l: Displays login page")
+        self.help_box.addstr(
             7, 1, "F, f: Displays filter page menu to search based on filters")
-        self.stdscr.addstr(
+        self.help_box.addstr(
             8, 1, "R, r: Refreshes restaurants page")
+        self.help_box.refresh()
 
     def get_data(self, user):
+        self.status = "Loading"
+        self.render_mode()
         try:
             url = user.format_request_url()
             r = requests.get(url)
             data = json.loads(r.text)
             if data["Data"] is None:
                 return [dict({"Name": "No restaurants found"})]
+            self.status = "Normal mode"
             return data["Data"]
         except Exception as e:
             self.stdscr.erase()
@@ -291,7 +314,7 @@ class TUI:
     def print_help_string(self, y, x, max_x):
         help_text = """Welcome to restaurateur TUI!
         This interface is controlled via keyboard shortcuts. To access specific
-        elements you can use the key that is highlighted in yellow and underlined. Access insert mode with "I" or "i", exit it with escape.
+        elements you can use the key that is highlighted in yellow and underlined. Access insert status with "I" or "i", exit it with escape.
         If you need help with any of the commands press '?'"""
         max_len = max_x - 2
         x += 2
@@ -476,104 +499,6 @@ def get_restaurant_names(data):
     return [restaurant["Name"] for restaurant in data]
 
 
-def display_restaurant_info(stdscr, restaurant):
-    stdscr.erase()
-    # Clean up URL
-    try:
-        restaurant["URL"] = re.match(
-            r"^.+?[^\/:](?=[?\/]|$)", restaurant["URL"]).group(0)
-    except:
-        pass
-    y, x = stdscr.getyx()
-    main_box = curses.newwin(y, x)
-    main_box.box()
-    stdscr.refresh()
-    main_box.refresh()
-    x += 1
-    days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday",
-                    "Friday", "Saturday", "Sunday"]
-    max_y, max_x = stdscr.getmaxyx()
-    max_len = max_x - 2
-    orig_x = x
-    for key, value in restaurant.items():
-        y += 1
-        if y >= max_y - 1:
-            break
-        if value in (None, "", "null") or key in ('Images', "ID"):
-            y -= 1
-            continue
-        elif key == 'OpeningHours':
-            sorted_days = dict()
-            for day in days_of_week:
-                sorted_days[day] = json.loads(value)[day]
-            y += 1
-            stdscr.addstr(y, x, "**Opening hours**")
-            y += 1
-            for k, v in sorted_days.items():
-                orig_x = x
-                stdscr.addstr(y, x, k + ":")
-                x += len(k) + 2
-                stdscr.addstr(y, x, v)
-                x = orig_x
-                y += 1
-                if y >= max_y - 1:
-                    stdscr.getch()
-                    return
-        else:
-            stdscr.addstr(y, x, key + ":")
-            x += len(key) + 2
-            if isinstance(value, list):
-                value = ", ".join(value)
-            if isinstance(value, str):
-                for word in value.split():
-                    word_len = len(word)
-                    if x + word_len + 1 >= max_len:
-                        y += 1
-                        if y >= max_y - 1:
-                            stdscr.getch()
-                            return
-                        x = orig_x
-                    stdscr.addstr(y, x, str(word))
-                    x += word_len
-                    stdscr.addstr(y, x, " ")
-                    x += 1
-            else:
-                stdscr.addstr(y, x, str(value))
-            x = orig_x
-    stdscr.getch()
-
-
-def display_restaurants(stdscr, restaurants, y, x, user_y, offset):
-    stdscr.erase()
-    win_y, win_x = stdscr.getyx()
-    main_box = curses.newwin(win_y, win_x)
-    main_box.box()
-    stdscr.refresh()
-    main_box.refresh()
-    max_y, max_x = stdscr.getmaxyx()
-    x += 1
-    number_of_restaurants = len(restaurants)
-    free_space = max_y - y - 1
-    # For user_y
-    if number_of_restaurants > free_space:
-        max_num = number_of_restaurants - free_space
-    else:
-        max_num = 0
-    restaurants = restaurants[offset:]
-    for restaurant in restaurants:
-        if y == max_y - 1:
-            break
-        elif y == user_y:
-            stdscr.addstr(y, x, restaurant["Name"], curses.A_STANDOUT)
-        else:
-            stdscr.addstr(y, x, restaurant["Name"])
-        y += 1
-    return number_of_restaurants
-
-
-# FIXME
-
-
 def main(stdscr):
     stdscr.erase()
     curses.curs_set(0)  # Turn off cursor blinking
@@ -590,6 +515,8 @@ def main(stdscr):
         if c in (ord('s'), ord('S')):
             tui.search_name = "name" if tui.search_name == "address" else "address"
         if c in (ord('i'), ord('I')):
+            tui.status = "Insert mode"
+            tui.render_mode()
             tui.get_user_input()
             if tui.search_submitted:
                 # process input
@@ -629,10 +556,10 @@ def main(stdscr):
             resized = True
         elif c == curses.KEY_RESIZE:
             resized = True
+        tui.status = "Normal mode"
         tui.render_home(render_all=resized)
 
 
-# TODO: Render everything in specific boxes
 # TODO: Add status line
 if __name__ == "__main__":
     os.environ.setdefault('ESCDELAY', '25')
