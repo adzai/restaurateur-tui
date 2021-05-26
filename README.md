@@ -1,3 +1,4 @@
+![Restaurateur TUI](https://github.com/adzai/restaurateur-tui/actions/workflows/restaurateur-tui.yml/badge.svg)
 # Restaurateur TUI
 
 Terminal frontend for [Restaurateur API](https://github.com/AgiliaErnis/restaurateur/tree/main/backend) 
