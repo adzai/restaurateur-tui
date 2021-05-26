@@ -18,16 +18,23 @@ class MenuItem:
 
 
 class Menu:
-    def __init__(self, name, data, user, filters_menu=None):
+    def __init__(self, name, user, filters_menu=None):
         self.name = name
         self.x = 2
         self.y = 1
-        self.data = data
+        self.raw_data = None
         self.current_y = self.y
         self.menu_items = []
         self.offset = 0
         self.user = user
         self.window = None
+        self.set_items = False
+
+    def set_data(self, data):
+        if data is None:
+            self.raw_data = [dict({"name": "No restaurants found"})]
+        else:
+            self.raw_data = data
 
     def add_items(self, items):
         max_x, max_y = self.window.getmaxyx()
@@ -49,11 +56,11 @@ class Menu:
         max_y, max_x = stdscr.getmaxyx()
         self.window = curses.newwin(max_y - 1, max_x - 1)
         self.window.keypad(True)
-        if len(self.menu_items) == 0:
+        if self.set_items:
             self.menu_items = []
             self.add_items(items)
-        else:
-            self.update_items()
+            self.set_items = False
+        self.update_items()
         self.window.erase()
         max_y, max_x = self.window.getmaxyx()
         max_y -= 1
@@ -85,7 +92,7 @@ class Menu:
     def get_currently_selected(self):
         for i, item in enumerate(self.menu_items):
             if item.y == self.current_y + self.offset:
-                return self.data[i]
+                return self.raw_data[i]
 
     def get_currently_selected_item(self):
         for i, item in enumerate(self.menu_items):

@@ -40,9 +40,9 @@ class TUI:
         self.search_text = None
         self.search_submitted = False
         self.filters = and_params + ["Cuisines", "Prices"]
-        self.cuisines_menu = Menu("Cuisines", cuisines_param, user)
-        self.prices_menu = Menu("Prices", price_param, user)
-        self.filters_menu = Menu("Filters", self.filters, user)
+        self.cuisines_menu = Menu("Cuisines", user)
+        self.prices_menu = Menu("Prices", user)
+        self.filters_menu = Menu("Filters", user)
         self.filters_menu_on = False
         self.status = "Main menu"
         self.displaying_error = False
@@ -126,21 +126,25 @@ class TUI:
         self.status_box.addstr(self.status)
         self.status_box.refresh()
 
-    def scroll_loop(self, menu, action, items=[]):
+    def scroll_loop(self, menu, action, items_func=None):
         if menu == self.filters_menu:
             self.filters_menu_on = True
-        if len(items) == 0:
-            items = utils.get_restaurant_names(menu.data)
+        if items_func is None:
+
+            def items_func():
+                menu.set_data(self.get_data(self.user))
+                return utils.get_restaurant_names(menu.raw_data)
+        items = items_func()
         self.stdscr.erase()
         self.render_status_line()
         original_status = menu.name
         self.status = original_status
+        menu.set_items = True
         menu.render_menu(self.stdscr, items, self.render_status_line)
         # Making window bigger doesn't resize
         while (c := menu.window.getch()) != 27 \
                 and c not in (ord('q'), ord('Q')):
             win_max_y, max_x = menu.window.getmaxyx()
-            # max_y = number_of_restaurants - orig_y + 1
             max_y = len(items) + menu.y - 1
             if c in (ord('j'), ord('J'), curses.KEY_DOWN):
                 if menu.current_y == win_max_y - 2 or menu.current_y == max_y:
@@ -163,10 +167,12 @@ class TUI:
             elif c in (ord('f'), ord('F')):
                 if not self.filters_menu_on:
                     self.scroll_loop(self.filters_menu,
-                                     self.toggle_item, items=self.filters)
+                                     self.toggle_item,
+                                     items_func=lambda: self.filters)
             elif c in (ord('r'), ord('R')):
                 if menu != self.filters_menu:
-                    return True
+                    items = items_func()
+                    menu.set_items = True
             elif c == ord('?'):
                 self.print_help_menu()
             elif c == curses.KEY_RESIZE:
@@ -255,7 +261,7 @@ class TUI:
         self.help_box.addstr(
             6, 1, "F, f: Displays filter page menu to search based on filters")
         self.help_box.addstr(
-            7, 1, "R, r: Refreshes restaurants page")
+            7, 1, "R, r: Refreshes current page")
         self.help_box.refresh()
 
     def get_data(self, user):
@@ -265,8 +271,6 @@ class TUI:
             url = user.format_request_url()
             r = requests.get(url)
             data = json.loads(r.text)
-            if data["data"] is None:
-                return [dict({"name": "No restaurants found"})]
             return data["data"]
         except Exception:
             self.stdscr.erase()
@@ -334,19 +338,18 @@ class TUI:
                     count = x
 
     def restaurant_items_loop(self, menu):
-        new_items = utils.get_restaurant_info(
+        def data_func(): return utils.get_restaurant_info(
             menu.get_currently_selected())
-        new_menu = Menu("Restaurant info", new_items, self.user)
-        self.scroll_loop(new_menu, self.display_truncated, items=new_items)
+        new_menu = Menu("Restaurant info", self.user)
+        new_menu.raw_data = data_func()
+        self.scroll_loop(new_menu, action=self.display_truncated,
+                         items_func=data_func)
 
     def display_truncated(self, menu):
         item, pos = menu.get_currently_selected_item()
         if item.string_content[:-4:-1] == "...":
-            # Do something when string
-            # Do something when list
-            # Do something when dict
             key = item.string_content.split(":")[0]
-            values = menu.data[pos].replace(key + ": ", "")  # [key]
+            values = menu.raw_data[pos].replace(key + ": ", "")  # [key]
             items = []
             _, max_x = self.stdscr.getmaxyx()
             max_x -= 6
@@ -378,18 +381,19 @@ class TUI:
                     chars += char
                     x += 1
                 items.append(chars)
-            new_menu = Menu("Item info", items, self.user)
-            self.scroll_loop(new_menu, None, items=items)  # Use menu.data?
+            new_menu = Menu("Item info", self.user)
+            self.scroll_loop(new_menu, action=None, items_func=lambda: items)
 
     def toggle_item(self, menu):
         item, _ = menu.get_currently_selected_item()
         if item.string_content == "Cuisines":
-            self.scroll_loop(self.cuisines_menu, self.toggle_item,
-                             items=cuisines_param)
+            self.scroll_loop(self.cuisines_menu, action=self.toggle_item,
+                             items_func=lambda: cuisines_param)
             return
         elif item.string_content == "Prices":
             self.scroll_loop(self.prices_menu,
-                             self.toggle_item, items=price_param)
+                             action=self.toggle_item,
+                             items_func=lambda: price_param)
             return
         item.toggle_highlighted = not item.toggle_highlighted
         param_value = utils.string_to_param(item.string_content)
@@ -425,7 +429,7 @@ def main_loop(stdscr):
         if c in (ord('s'), ord('S')):
             tui.search_name = "name" if tui.search_name == "address" \
                 else "address"
-        if c in (ord('i'), ord('I')):
+        if c in (ord('i'), ord('I')):  # set call_backend type flag for p, a, i
             tui.status = "Insert mode"
             tui.render_status_line()
             tui.get_user_input()
@@ -433,43 +437,24 @@ def main_loop(stdscr):
                 user.prague_college = False
                 user.search_param = "search-" + tui.search_name + \
                     "=" + tui.search_text
-                cont = True
-                while cont:
-                    data = tui.get_data(tui.user)
-                    if data is None:
-                        break
-                    menu = Menu("Restaurants", data, user)
-                    cont = tui.scroll_loop(menu, tui.restaurant_items_loop)
+                menu_name = "Restaurants"
+                tui.search = True
                 tui.search_submitted = False
                 tui.search_text = None
-                user.search_param = None
-            re_render = True
         elif c == ord('?'):
             tui.print_help_menu()
             re_render = True
         elif c in (ord('p'), ord('P')):
             user.prague_college = True
-            cont = True
-            while cont:
-                data = tui.get_data(tui.user)
-                if data is None:
-                    break
-                menu = Menu("Prague college restaurants", data, user)
-                cont = tui.scroll_loop(menu, tui.restaurant_items_loop)
-            re_render = True
+            menu_name = "Prague college restaurants"
+            tui.search = True
         elif c in (ord('a'), ord('A')):
             user.prague_college = False
-            cont = True
-            while cont:
-                data = tui.get_data(tui.user)
-                if data is None:
-                    break
-                menu = Menu("Restaurants", data, user)
-                cont = tui.scroll_loop(menu, tui.restaurant_items_loop)
-            re_render = True
+            tui.search = True
+            menu_name = "Restaurants"
         elif c in (ord('f'), ord('F')):
-            tui.scroll_loop(tui.filters_menu, tui.toggle_item,
-                            items=tui.filters)
+            tui.scroll_loop(tui.filters_menu, action=tui.toggle_item,
+                            items_func=lambda: tui.filters)
             re_render = True
         elif c == curses.KEY_RESIZE:
             re_render = True
@@ -477,4 +462,11 @@ def main_loop(stdscr):
             tui.displaying_error = False
         else:
             tui.status = "Main menu"
+        if tui.search:
+            menu = Menu(menu_name, user)
+            tui.scroll_loop(menu, action=tui.restaurant_items_loop)
+            re_render = True
+            tui.search = False
+            user.search_param = None
+
         tui.render_home(render_all=re_render)
