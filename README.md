@@ -1,3 +1,4 @@
+![Restaurateur TUI](https://github.com/adzai/restaurateur-tui/actions/workflows/restaurateur-tui.yml/badge.svg)
 # Restaurateur TUI
 
 Terminal frontend for [Restaurateur API](https://github.com/AgiliaErnis/restaurateur/tree/main/backend) 
@@ -9,7 +10,6 @@ written in python curses.
 
 ![tui-filters](https://user-images.githubusercontent.com/39188731/119697157-31f91280-be50-11eb-8b4a-5e6c25064cae.png)
 
-
 ## Requirements
 
 ## Linux
@@ -19,7 +19,14 @@ written in python curses.
 ## Windows
 
 * Python 3.8+
-* `python -m pip install windows-curses`
+* `$ python -m pip install windows-curses`
+
+## Run
+
+`$ python restaurateur-tui.py`
+
+If you want to specify your own backend (local build), you can use
+`$ python restaurateur-tui.py --host "http://localhost:8080"`
 
 ## Functionality
 
