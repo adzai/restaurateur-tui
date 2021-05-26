@@ -284,7 +284,7 @@ class TUI:
         self.help_box = curses.newwin(0, 0)
         self.help_box.box()
         self.help_box.addstr(1, 1, "Esc : Exits current status/window")
-        self.help_box.addstr(2, 1, "I, i: Enters insert status")
+        self.help_box.addstr(2, 1, "I, i: Enters insert mode")
         self.help_box.addstr(
             3, 1, "P, p: Displays restaurants around Prague college")
         self.help_box.addstr(
@@ -303,12 +303,12 @@ class TUI:
             url = user.format_request_url()
             r = requests.get(url)
             data = json.loads(r.text)
-            if data["Data"] is None:
+            if data["data"] is None:
                 return [dict({"Name": "No restaurants found"})]
-            return data["Data"]
+            return data["data"]
         except Exception as e:
             self.stdscr.erase()
-            self.stdscr.addstr("Exception: " + str(e) + "\n")
+            print("Exception: " + str(e) + "\n")
             self.status = "Couldn't connect to the server"
             self.displaying_error = True
 
@@ -344,7 +344,7 @@ class TUI:
     def print_help_string(self):
         help_text = """Welcome to restaurateur TUI!
         This interface is controlled via keyboard shortcuts. To access specific
-        elements you can use the key that is highlighted in yellow and underlined. Access insert status with "I" or "i", exit it with escape.
+        elements you can use the key that is highlighted in yellow and underlined. Access insert mode with "I" or "i", exit it with escape.
         If you need help with any of the commands press '?'"""
         max_y, max_x = self.home_main_box.getmaxyx()
         max_len = max_x - 2
@@ -545,17 +545,17 @@ def string_to_param(string):
 
 def get_restaurant_info(restaurant):
     try:
-        restaurant["URL"] = re.match(
-            r"^.+?[^\/:](?=[?\/]|$)", restaurant["URL"]).group(0)
+        restaurant["url"] = re.match(
+            r"^.+?[^\/:](?=[?\/]|$)", restaurant["url"]).group(0)
     except:
         pass
     days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday",
                     "Friday", "Saturday", "Sunday"]
     items = []
     for key, value in restaurant.items():
-        if value in (None, "", "null") or key in ('Images', "ID"):
+        if value in (None, "", "null") or key in ('images', "id"):
             continue
-        elif key == 'OpeningHours':
+        elif key == 'openingHours':
             sorted_days = dict()
             for day in days_of_week:
                 sorted_days[day] = json.loads(value)[day]
@@ -564,6 +564,7 @@ def get_restaurant_info(restaurant):
                 items.append(k)
                 items.append(v)
         else:
+            # TODO: normalize keys
             start = key + ": "
             if isinstance(value, list):
                 v = ", ".join(value)
@@ -574,7 +575,7 @@ def get_restaurant_info(restaurant):
 
 
 def get_restaurant_names(data):
-    return [restaurant["Name"] for restaurant in data]
+    return [restaurant["name"] for restaurant in data]
 
 
 def main(stdscr):
