@@ -30,3 +30,8 @@ written in python curses.
 * Apply various filters to your searches such as cuisines, vegetarian, vegan, price range etc.
 * Adapts display on terminal resizing
 
+
+## Disclaimers
+
+* This is just a demo showcasing a possibility of using different frontends for the [Restaurateur API](https://github.com/AgiliaErnis/restaurateur/tree/main/backend) and as such offers limited functionality and isn't very polished
+* The user experience may be affected by your terminal and terminal font of choice
