@@ -18,7 +18,7 @@ class MenuItem:
 
 
 class Menu:
-    def __init__(self, name, user, filters_menu=None):
+    def __init__(self, name, user, filters_menu=None, strict_toggle=False):
         self.name = name
         self.x = 2
         self.y = 1
@@ -28,7 +28,8 @@ class Menu:
         self.offset = 0
         self.user = user
         self.window = None
-        self.set_items = False
+        self.refresh_items = False
+        self.strict_toggle = strict_toggle
 
     def set_data(self, data):
         if data is None:
@@ -41,7 +42,8 @@ class Menu:
         y = self.y
         for item in items:
             highlighted = True if y == self.current_y + self.offset else False
-            self.menu_items.append(MenuItem(self.x, y, item, highlighted))
+            self.menu_items.append(
+                MenuItem(self.x, y, item, highlighted=highlighted))
             y += 1
 
     def update_items(self):
@@ -52,14 +54,19 @@ class Menu:
                 self.offset else False
             y += 1
 
+    def remove_other_toggles(self, string_content):
+        for item in self.menu_items:
+            if item.string_content != string_content and \
+                    item.toggle_highlighted:
+                item.toggle_highlighted = False
+
     def render_menu(self, stdscr, items, render_status_line):
         max_y, max_x = stdscr.getmaxyx()
         self.window = curses.newwin(max_y - 1, max_x - 1)
         self.window.keypad(True)
-        if self.set_items:
+        if self.refresh_items or len(self.menu_items) == 0:
             self.menu_items = []
             self.add_items(items)
-            self.set_items = False
         self.update_items()
         self.window.erase()
         max_y, max_x = self.window.getmaxyx()

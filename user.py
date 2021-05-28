@@ -14,6 +14,7 @@ class User:
         self.search_param = None
         self.cuisines = []
         self.prices = []
+        self.sort_method = ""
         self.prague_college = False
 
     def format_request_url(self):
@@ -32,4 +33,6 @@ class User:
             all_filters.append("cuisine=" + ",".join(self.cuisines))
         if len(self.prices) > 0:
             all_filters.append("price-range=" + ",".join(self.prices))
+        if self.sort_method != "":
+            all_filters.append("sort=" + self.sort_method)
         return url + "&".join(all_filters)

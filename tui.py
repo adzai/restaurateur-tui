@@ -5,12 +5,15 @@ from user import User
 from menus import Menu
 import utils
 
-and_params = ["Vegetarian", "Vegan", "Gluten free", "Takeaway", "Has menu"]
+and_params = ["Vegetarian", "Vegan", "Gluten free",
+              "Takeaway", "Has menu", "Sort by"]
 price_param = ["0-300", "300-600", "600-"]
 cuisines_param = ["Czech", "International", "Italian", "English", "American",
                   "Asian", "Indian", "Japanese", "Vietnamese",
                   "Spanish", "Mediterranean", "French", "Thai", "Balkan",
                   "Brazil", "Russian", "Chinese", "Greek", "Arabic", "Korean"]
+
+sort_param = ["Rating", "Price desc", "Price asc"]
 
 logo_big = r"""
                  _                        _
@@ -43,9 +46,11 @@ class TUI:
         self.cuisines_menu = Menu("Cuisines", user)
         self.prices_menu = Menu("Prices", user)
         self.filters_menu = Menu("Filters", user)
+        self.sort_menu = Menu("Sort by", user, strict_toggle=True)
         self.filters_menu_on = False
         self.status = "Main menu"
         self.displaying_error = False
+        self.get_restaurants = False
 
     def render_home_main_box(self):
         home_main_box_x = 5
@@ -139,7 +144,6 @@ class TUI:
         self.render_status_line()
         original_status = menu.name
         self.status = original_status
-        menu.set_items = True
         menu.render_menu(self.stdscr, items, self.render_status_line)
         # Making window bigger doesn't resize
         while (c := menu.window.getch()) != 27 \
@@ -395,7 +399,18 @@ class TUI:
                              action=self.toggle_item,
                              items_func=lambda: price_param)
             return
+        elif item.string_content == "Sort by":
+            self.scroll_loop(self.sort_menu,
+                             action=self.toggle_item,
+                             items_func=lambda: sort_param)
+            return
         item.toggle_highlighted = not item.toggle_highlighted
+        if menu.strict_toggle:
+            menu.remove_other_toggles(item.string_content)
+            menu.render_menu(self.stdscr, menu.menu_items,
+                             self.render_status_line)
+            # remove from params
+            self.user.sort = ""
         param_value = utils.string_to_param(item.string_content)
         if item.toggle_highlighted:
             if item.string_content in and_params:
@@ -404,6 +419,8 @@ class TUI:
                 self.user.cuisines.append(param_value)
             elif item.string_content in price_param:
                 self.user.prices.append(param_value)
+            elif item.string_content in sort_param:
+                self.user.sort_method = param_value
         else:
             if item.string_content in and_params:
                 menu.user.and_filters.remove(param_value + "=true")
@@ -429,7 +446,7 @@ def main_loop(stdscr):
         if c in (ord('s'), ord('S')):
             tui.search_name = "name" if tui.search_name == "address" \
                 else "address"
-        if c in (ord('i'), ord('I')):  # set call_backend type flag for p, a, i
+        if c in (ord('i'), ord('I')):
             tui.status = "Insert mode"
             tui.render_status_line()
             tui.get_user_input()
@@ -438,7 +455,7 @@ def main_loop(stdscr):
                 user.search_param = "search-" + tui.search_name + \
                     "=" + tui.search_text
                 menu_name = "Restaurants"
-                tui.search = True
+                tui.get_restaurants = True
                 tui.search_submitted = False
                 tui.search_text = None
         elif c == ord('?'):
@@ -447,10 +464,10 @@ def main_loop(stdscr):
         elif c in (ord('p'), ord('P')):
             user.prague_college = True
             menu_name = "Prague college restaurants"
-            tui.search = True
+            tui.get_restaurants = True
         elif c in (ord('a'), ord('A')):
             user.prague_college = False
-            tui.search = True
+            tui.get_restaurants = True
             menu_name = "Restaurants"
         elif c in (ord('f'), ord('F')):
             tui.scroll_loop(tui.filters_menu, action=tui.toggle_item,
@@ -462,11 +479,11 @@ def main_loop(stdscr):
             tui.displaying_error = False
         else:
             tui.status = "Main menu"
-        if tui.search:
+        if tui.get_restaurants:
             menu = Menu(menu_name, user)
             tui.scroll_loop(menu, action=tui.restaurant_items_loop)
             re_render = True
-            tui.search = False
+            tui.get_restaurants = False
             user.search_param = None
 
         tui.render_home(render_all=re_render)
