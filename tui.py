@@ -51,6 +51,7 @@ class TUI:
         self.status = "Main menu"
         self.displaying_error = False
         self.get_restaurants = False
+        self.highlight_parent = False
 
     def render_home_main_box(self):
         home_main_box_x = 5
@@ -176,7 +177,7 @@ class TUI:
             elif c in (ord('r'), ord('R')):
                 if menu != self.filters_menu:
                     items = items_func()
-                    menu.set_items = True
+                    menu.refresh_items = True
             elif c == ord('?'):
                 self.print_help_menu()
             elif c == curses.KEY_RESIZE:
@@ -393,22 +394,29 @@ class TUI:
         if item.string_content == "Cuisines":
             self.scroll_loop(self.cuisines_menu, action=self.toggle_item,
                              items_func=lambda: cuisines_param)
+
+            if self.highlight_parent:
+                item.toggle_highlighted = not item.toggle_highlighted
             return
         elif item.string_content == "Prices":
             self.scroll_loop(self.prices_menu,
                              action=self.toggle_item,
                              items_func=lambda: price_param)
+            if self.highlight_parent:
+                item.toggle_highlighted = not item.toggle_highlighted
             return
         elif item.string_content == "Sort by":
             self.scroll_loop(self.sort_menu,
                              action=self.toggle_item,
                              items_func=lambda: sort_param)
+            if self.highlight_parent:
+                item.toggle_highlighted = not item.toggle_highlighted
             return
         item.toggle_highlighted = not item.toggle_highlighted
         if menu.strict_toggle:
             menu.remove_other_toggles(item.string_content)
-            menu.render_menu(self.stdscr, menu.menu_items,
-                             self.render_status_line)
+            # menu.render_menu(self.stdscr, menu.menu_items,
+            #                  self.render_status_line)
             # remove from params
             self.user.sort = ""
         param_value = utils.string_to_param(item.string_content)
@@ -428,6 +436,9 @@ class TUI:
                 self.user.cuisines.remove(param_value)
             elif item.string_content in price_param:
                 self.user.prices.remove(param_value)
+            elif item.string_content in sort_param:
+                self.user.sort_method = ""
+        self.highlight_parent = menu.isHighlighted()
 
 
 def main_loop(stdscr):

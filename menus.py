@@ -60,6 +60,12 @@ class Menu:
                     item.toggle_highlighted:
                 item.toggle_highlighted = False
 
+    def isHighlighted(self):
+        for item in self.menu_items:
+            if item.highlighted:
+                return True
+        return False
+
     def render_menu(self, stdscr, items, render_status_line):
         max_y, max_x = stdscr.getmaxyx()
         self.window = curses.newwin(max_y - 1, max_x - 1)
