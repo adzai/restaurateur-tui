@@ -24,6 +24,7 @@ class Menu:
         self.y = 1
         self.raw_data = None
         self.current_y = self.y
+        self.orig_y = self.y
         self.menu_items = []
         self.offset = 0
         self.user = user
@@ -62,7 +63,7 @@ class Menu:
 
     def isHighlighted(self):
         for item in self.menu_items:
-            if item.highlighted:
+            if item.toggle_highlighted:
                 return True
         return False
 

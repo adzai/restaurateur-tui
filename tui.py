@@ -146,7 +146,6 @@ class TUI:
         original_status = menu.name
         self.status = original_status
         menu.render_menu(self.stdscr, items, self.render_status_line)
-        # Making window bigger doesn't resize
         while (c := menu.window.getch()) != 27 \
                 and c not in (ord('q'), ord('Q')):
             win_max_y, max_x = menu.window.getmaxyx()
@@ -178,6 +177,7 @@ class TUI:
                 if menu != self.filters_menu:
                     items = items_func()
                     menu.refresh_items = True
+                    menu.current_y = menu.y
             elif c == ord('?'):
                 self.print_help_menu()
             elif c == curses.KEY_RESIZE:
@@ -256,7 +256,7 @@ class TUI:
     def render_help_menu(self):
         self.help_box = curses.newwin(0, 0)
         self.help_box.box()
-        self.help_box.addstr(1, 1, "Esc : Exits current status/window")
+        self.help_box.addstr(1, 1, "Esc : Exits current window/mode")
         self.help_box.addstr(2, 1, "I, i: Enters insert mode")
         self.help_box.addstr(
             3, 1, "P, p: Displays restaurants around Prague college")
@@ -267,6 +267,12 @@ class TUI:
             6, 1, "F, f: Displays filter page menu to search based on filters")
         self.help_box.addstr(
             7, 1, "R, r: Refreshes current page")
+        self.help_box.addstr(
+            8, 1, "J, j: Move down")
+        self.help_box.addstr(
+            9, 1, "K, k: Move up")
+        self.help_box.addstr(
+            10, 1, "O, o: Open")
         self.help_box.refresh()
 
     def get_data(self, user):
@@ -354,7 +360,7 @@ class TUI:
         item, pos = menu.get_currently_selected_item()
         if item.string_content[:-4:-1] == "...":
             key = item.string_content.split(":")[0]
-            values = menu.raw_data[pos].replace(key + ": ", "")  # [key]
+            values = menu.raw_data[pos].replace(key + ": ", "")
             items = []
             _, max_x = self.stdscr.getmaxyx()
             max_x -= 6
@@ -395,29 +401,23 @@ class TUI:
             self.scroll_loop(self.cuisines_menu, action=self.toggle_item,
                              items_func=lambda: cuisines_param)
 
-            if self.highlight_parent:
-                item.toggle_highlighted = not item.toggle_highlighted
+            item.toggle_highlighted = self.highlight_parent
             return
         elif item.string_content == "Prices":
             self.scroll_loop(self.prices_menu,
                              action=self.toggle_item,
                              items_func=lambda: price_param)
-            if self.highlight_parent:
-                item.toggle_highlighted = not item.toggle_highlighted
+            item.toggle_highlighted = self.highlight_parent
             return
         elif item.string_content == "Sort by":
             self.scroll_loop(self.sort_menu,
                              action=self.toggle_item,
                              items_func=lambda: sort_param)
-            if self.highlight_parent:
-                item.toggle_highlighted = not item.toggle_highlighted
+            item.toggle_highlighted = self.highlight_parent
             return
         item.toggle_highlighted = not item.toggle_highlighted
         if menu.strict_toggle:
             menu.remove_other_toggles(item.string_content)
-            # menu.render_menu(self.stdscr, menu.menu_items,
-            #                  self.render_status_line)
-            # remove from params
             self.user.sort = ""
         param_value = utils.string_to_param(item.string_content)
         if item.toggle_highlighted:
