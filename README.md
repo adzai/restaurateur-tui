@@ -37,6 +37,59 @@ If you want to specify your own backend (local build), you can use
 * Apply various filters to your searches such as cuisines, vegetarian, vegan, price range etc.
 * Adapts display on terminal resizing
 
+## User manual
+
+You can navigate the TUI via keyboard controls. If you are unsure
+of the controls, you can press '?' at any point, which will bring up the 
+keybinds.
+
+If you want to reload your page to either reload new content
+after changing your filter preferences or because of a visual
+bug, you can pres 'r' at any time.
+
+On the bottom of your screen there is a small status line
+explaining what is happening on the screen.
+
+To quit the current window (go back) you can press 'q' or 'esc'.
+
+### Main menu
+
+All of the keyboard shortcuts are highlighted in yellow and 
+underlined. If you press the highlighted key (upper or lower case)
+the described action will take place. 
+
+If you press 'f', a list with filters will appear. Those are the
+options you can toggle on or off (highlighted by changing the 
+color to red) which will be applied to your restaurant search.
+You can toggle the filters by pressing 'o' or 'enter'. If there
+are subfilters behind the selected filter, like 'Cuisines', 
+you will enter the cuisines filter where you can toggle the
+individual items.
+
+
+By pressing 's' you can toggle between searching based on a name, or based
+on an address. If you'd like to type in the name or address,
+you'll have to enter insert mode by pressing 'i'. After you are
+done typing, you can press 'enter' to submit the search or 
+'esc' to abort.
+
+To search for restaurants around Prague college with
+currently applied filters, press 'p'. You can do the same
+for all restaurants around Prague by pressing 'a'.
+
+### Menus
+
+Once you are in a menu, you can scroll through the items with
+'j' and 'k' or with your arrow keys. To open a selected item, 
+press 'o' or 'enter' and additional content will be displayed,
+if there's any. If you see '...' at the end of the line, it 
+means that the text had to be truncated to fit on the line. 
+You can display the rest by pressing 'o' or 'enter'. 
+If you see '...' after resizing and the text didn't expand 
+back to original, press 'r' to reload. When in the restaurants
+scroll menu, you can apply/remove filters by pressing 'f' and
+reload the restaurants based on new preferences by pressing 'r'.
+
 
 ## Disclaimers
 
